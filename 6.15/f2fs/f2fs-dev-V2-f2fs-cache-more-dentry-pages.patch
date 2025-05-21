@@ -1,0 +1,114 @@
+From patchwork Fri Nov 22 10:58:22 2024
+Content-Type: text/plain; charset="utf-8"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+X-Patchwork-Submitter: zangyangyang1 <zangyangyang1@xiaomi.com>
+X-Patchwork-Id: 13883063
+Return-Path: <linux-f2fs-devel-bounces@lists.sourceforge.net>
+X-Spam-Checker-Version: SpamAssassin 3.4.0 (2014-02-07) on
+	aws-us-west-2-korg-lkml-1.web.codeaurora.org
+Received: from lists.sourceforge.net (lists.sourceforge.net [216.105.38.7])
+	(using TLSv1.2 with cipher ECDHE-RSA-AES256-GCM-SHA384 (256/256 bits))
+	(No client certificate requested)
+	by smtp.lore.kernel.org (Postfix) with ESMTPS id BF8D6D75E24
+	for <linux-f2fs-devel@archiver.kernel.org>;
+ Fri, 22 Nov 2024 10:58:42 +0000 (UTC)
+Received: from [127.0.0.1] (helo=sfs-ml-1.v29.lw.sourceforge.com)
+	by sfs-ml-1.v29.lw.sourceforge.com with esmtp (Exim 4.95)
+	(envelope-from <linux-f2fs-devel-bounces@lists.sourceforge.net>)
+	id 1tERN2-0003uY-Ik;
+	Fri, 22 Nov 2024 10:58:41 +0000
+Received: from [172.30.29.66] (helo=mx.sourceforge.net)
+ by sfs-ml-1.v29.lw.sourceforge.com with esmtps (TLS1.2) tls
+ TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 (Exim 4.95)
+ (envelope-from <zangyangyang1@xiaomi.com>) id 1tERN1-0003uR-Rb
+ for linux-f2fs-devel@lists.sourceforge.net;
+ Fri, 22 Nov 2024 10:58:40 +0000
+DKIM-Signature: v=1; a=rsa-sha256; q=dns/txt; c=relaxed/relaxed;
+ d=sourceforge.net; s=x; h=Content-Type:Content-Transfer-Encoding:MIME-Version
+ :Message-ID:Date:Subject:CC:To:From:Sender:Reply-To:Content-ID:
+ Content-Description:Resent-Date:Resent-From:Resent-Sender:Resent-To:Resent-Cc
+ :Resent-Message-ID:In-Reply-To:References:List-Id:List-Help:List-Unsubscribe:
+ List-Subscribe:List-Post:List-Owner:List-Archive;
+ bh=ZJwXorGrLTFjRGtCuSMyWA7LCHU7xubWZh0JKsXO2Pw=; b=lA7/XdJ9VC0ZOc75SLvwRVq08Q
+ zgzDsY7Jh2lvNF3Em3YLAj193Qp9tQy95SdbFHj7PITlnd7Tyv2tR6liihFN13r2LEOIran6AGLuo
+ nOFVzOnK4qW7XG44tp9TJBbSRqs2AmJTK/SRSzQ3sL1EwvBYwymBL3Uf3w5+4H6qZz74=;
+DKIM-Signature: v=1; a=rsa-sha256; q=dns/txt; c=relaxed/relaxed; d=sf.net; s=x
+ ;
+ h=Content-Type:Content-Transfer-Encoding:MIME-Version:Message-ID:Date:
+ Subject:CC:To:From:Sender:Reply-To:Content-ID:Content-Description:Resent-Date
+ :Resent-From:Resent-Sender:Resent-To:Resent-Cc:Resent-Message-ID:In-Reply-To:
+ References:List-Id:List-Help:List-Unsubscribe:List-Subscribe:List-Post:
+ List-Owner:List-Archive; bh=ZJwXorGrLTFjRGtCuSMyWA7LCHU7xubWZh0JKsXO2Pw=; b=i
+ 2VogZAMZXDLo09r4cpB/tNbDSLCf+w4iaIvBNfj2LmMjvYUL9t9obxUrB2oyyak3EqVGAtmnDxSWf
+ Gpx1NBE6x0Vxgmp6KNQmVGvV3OsqSHyjqnETjOBuuWJC73a+Y3GPKAhF+JnxvIm6I+qtbFmXHSF2W
+ 5mo0wnAmgf/0+k28=;
+Received: from outboundhk.mxmail.xiaomi.com ([207.226.244.122])
+ by sfi-mx-2.v28.lw.sourceforge.com with esmtp (Exim 4.95)
+ id 1tERN1-0004Rc-An for linux-f2fs-devel@lists.sourceforge.net;
+ Fri, 22 Nov 2024 10:58:40 +0000
+X-CSE-ConnectionGUID: TsnJ2BMAQNGSX9n7pFh60A==
+X-CSE-MsgGUID: leXAPdSnT4GHXmynVt2FkQ==
+X-IronPort-AV: E=Sophos;i="6.12,175,1728921600"; d="scan'208";a="127136777"
+To: <chao@kernel.org>
+Date: Fri, 22 Nov 2024 18:58:22 +0800
+Message-ID: <20241122105822.3910235-1-zangyangyang1@xiaomi.com>
+X-Mailer: git-send-email 2.43.2
+MIME-Version: 1.0
+X-Originating-IP: [10.149.37.65]
+X-ClientProxiedBy: yz-mbx11.mioffice.cn (10.237.88.131) To
+ bj-mbx11.mioffice.cn (10.237.8.131)
+X-Headers-End: 1tERN1-0004Rc-An
+Subject: [f2fs-dev] [PATCH V2] f2fs: cache more dentry pages
+X-BeenThere: linux-f2fs-devel@lists.sourceforge.net
+X-Mailman-Version: 2.1.21
+Precedence: list
+List-Id: <linux-f2fs-devel.lists.sourceforge.net>
+List-Unsubscribe: 
+ <https://lists.sourceforge.net/lists/options/linux-f2fs-devel>,
+ <mailto:linux-f2fs-devel-request@lists.sourceforge.net?subject=unsubscribe>
+List-Archive: 
+ <http://sourceforge.net/mailarchive/forum.php?forum_name=linux-f2fs-devel>
+List-Post: <mailto:linux-f2fs-devel@lists.sourceforge.net>
+List-Help: 
+ <mailto:linux-f2fs-devel-request@lists.sourceforge.net?subject=help>
+List-Subscribe: 
+ <https://lists.sourceforge.net/lists/listinfo/linux-f2fs-devel>,
+ <mailto:linux-f2fs-devel-request@lists.sourceforge.net?subject=subscribe>
+X-Patchwork-Original-From: zangyangyang1 via Linux-f2fs-devel
+ <linux-f2fs-devel@lists.sourceforge.net>
+From: zangyangyang1 <zangyangyang1@xiaomi.com>
+Reply-To: zangyangyang1 <zangyangyang1@xiaomi.com>
+Cc: jaegeuk@kernel.org, zangyangyang1 <zangyangyang1@xiaomi.com>,
+ linux-f2fs-devel@lists.sourceforge.net
+Errors-To: linux-f2fs-devel-bounces@lists.sourceforge.net
+
+While traversing dir entries in dentry page, it's better to refresh current
+accessed page in lru list by using FGP_ACCESSED flag, otherwise, such page
+may has less chance to survive during memory reclaim, result in causing
+additional IO when revisiting dentry page.
+
+Signed-off-by: zangyangyang1 <zangyangyang1@xiaomi.com>
+Reviewed-by: Chao Yu <chao@kernel.org>
+---
+ fs/f2fs/data.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+--
+2.43.2
+
+#/******±¾ÓÊ¼þ¼°Æä¸½¼þº¬ÓÐÐ¡Ã×¹«Ë¾µÄ±£ÃÜÐÅÏ¢£¬½öÏÞÓÚ·¢ËÍ¸øÉÏÃæµØÖ·ÖÐÁÐ³öµÄ¸öÈË»òÈº×é¡£½ûÖ¹ÈÎºÎÆäËûÈËÒÔÈÎºÎÐÎÊ½Ê¹ÓÃ£¨°üÀ¨µ«²»ÏÞÓÚÈ«²¿»ò²¿·ÖµØÐ¹Â¶¡¢¸´ÖÆ¡¢»òÉ¢·¢£©±¾ÓÊ¼þÖÐµÄÐÅÏ¢¡£Èç¹ûÄú´íÊÕÁË±¾ÓÊ¼þ£¬ÇëÄúÁ¢¼´µç»°»òÓÊ¼þÍ¨Öª·¢¼þÈË²¢É¾³ý±¾ÓÊ¼þ£¡ This e-mail and its attachments contain confidential information from XIAOMI, which is intended only for the person or entity whose address is listed above. Any use of the information contained herein in any way (including, but not limited to, total or partial disclosure, reproduction, or dissemination) by persons other than the intended recipient(s) is prohibited. If you receive this e-mail in error, please notify the sender by phone or email immediately and delete it!******/#
+
+diff --git a/fs/f2fs/data.c b/fs/f2fs/data.c
+index 402e00d54c0b..71ca987fe7cd 100644
+--- a/fs/f2fs/data.c
++++ b/fs/f2fs/data.c
+@@ -1286,7 +1286,7 @@ struct page *f2fs_find_data_page(struct inode *inode, pgoff_t index,
+        struct address_space *mapping = inode->i_mapping;
+        struct page *page;
+
+-       page = find_get_page(mapping, index);
++       page = find_get_page_flags(mapping, index, FGP_ACCESSED);
+        if (page && PageUptodate(page))
+                return page;
+        f2fs_put_page(page, 0);
