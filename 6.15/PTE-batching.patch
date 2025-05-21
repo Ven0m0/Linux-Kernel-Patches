@@ -1,0 +1,83 @@
+From 4a34c584d8cd13d2b721d21cf629f77c60bfb4a4 Mon Sep 17 00:00:00 2001
+From: Dev Jain <dev.jain@arm.com>
+Date: Wed, 16 Apr 2025 11:00:48 +0530
+Subject: mempolicy: optimize queue_folios_pte_range by PTE batching
+
+After the check for queue_folio_required(), the code only cares about the
+folio in the for loop, i.e the PTEs are redundant.  Therefore, optimize
+this loop by skipping over a PTE batch mapping the same folio.
+
+With a test program migrating pages of the calling process, which includes
+a mapped VMA of size 4GB with pte-mapped large folios of order-9, and
+migrating once back and forth node-0 and node-1, the average execution
+time reduces from 7.5 to 4 seconds, giving an approx 47% speedup.
+
+Link: https://lkml.kernel.org/r/20250416053048.96479-1-dev.jain@arm.com
+Signed-off-by: Dev Jain <dev.jain@arm.com>
+Acked-by: David Hildenbrand <david@redhat.com>
+Cc: Baolin Wang <baolin.wang@linux.alibaba.com>
+Cc: Hugh Dickins <hughd@google.com>
+Cc: Matthew Wilcox (Oracle) <willy@infradead.org>
+Cc: Ryan Roberts <ryan.roberts@arm.com>
+Cc: Vishal Moola (Oracle) <vishal.moola@gmail.com>
+Cc: Yang Shi <yang@os.amperecomputing.com>
+Cc: Zi Yan <ziy@nvidia.com>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ mm/mempolicy.c | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/mm/mempolicy.c b/mm/mempolicy.c
+index b28a1e6ae09641..4d2dc8b6396598 100644
+--- a/mm/mempolicy.c
++++ b/mm/mempolicy.c
+@@ -566,6 +566,7 @@ static void queue_folios_pmd(pmd_t *pmd, struct mm_walk *walk)
+ static int queue_folios_pte_range(pmd_t *pmd, unsigned long addr,
+ 			unsigned long end, struct mm_walk *walk)
+ {
++	const fpb_t fpb_flags = FPB_IGNORE_DIRTY | FPB_IGNORE_SOFT_DIRTY;
+ 	struct vm_area_struct *vma = walk->vma;
+ 	struct folio *folio;
+ 	struct queue_pages *qp = walk->private;
+@@ -573,6 +574,7 @@ static int queue_folios_pte_range(pmd_t *pmd, unsigned long addr,
+ 	pte_t *pte, *mapped_pte;
+ 	pte_t ptent;
+ 	spinlock_t *ptl;
++	int max_nr, nr;
+ 
+ 	ptl = pmd_trans_huge_lock(pmd, vma);
+ 	if (ptl) {
+@@ -586,7 +588,9 @@ static int queue_folios_pte_range(pmd_t *pmd, unsigned long addr,
+ 		walk->action = ACTION_AGAIN;
+ 		return 0;
+ 	}
+-	for (; addr != end; pte++, addr += PAGE_SIZE) {
++	for (; addr != end; pte += nr, addr += nr * PAGE_SIZE) {
++		max_nr = (end - addr) >> PAGE_SHIFT;
++		nr = 1;
+ 		ptent = ptep_get(pte);
+ 		if (pte_none(ptent))
+ 			continue;
+@@ -598,6 +602,10 @@ static int queue_folios_pte_range(pmd_t *pmd, unsigned long addr,
+ 		folio = vm_normal_folio(vma, addr, ptent);
+ 		if (!folio || folio_is_zone_device(folio))
+ 			continue;
++		if (folio_test_large(folio) && max_nr != 1)
++			nr = folio_pte_batch(folio, addr, pte, ptent,
++					     max_nr, fpb_flags,
++					     NULL, NULL, NULL);
+ 		/*
+ 		 * vm_normal_folio() filters out zero pages, but there might
+ 		 * still be reserved folios to skip, perhaps in a VDSO.
+@@ -630,7 +638,7 @@ static int queue_folios_pte_range(pmd_t *pmd, unsigned long addr,
+ 		if (!(flags & (MPOL_MF_MOVE | MPOL_MF_MOVE_ALL)) ||
+ 		    !vma_migratable(vma) ||
+ 		    !migrate_folio_add(folio, qp->pagelist, flags)) {
+-			qp->nr_failed++;
++			qp->nr_failed += nr;
+ 			if (strictly_unmovable(flags))
+ 				break;
+ 		}
+-- 
+cgit 1.2.3-korg
+

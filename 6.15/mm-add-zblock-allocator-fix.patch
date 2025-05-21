@@ -1,0 +1,35 @@
+From 583eb713a53c0a0241559ee32f5419c1cceaf65a Mon Sep 17 00:00:00 2001
+From: Andrew Morton <akpm@linux-foundation.org>
+Date: Tue, 15 Apr 2025 21:02:06 -0700
+Subject: mm-add-zblock-allocator-fix
+
+fix build
+
+Cc: Igor Belousov <igor.b@beldev.am>
+Cc: Johannes Weiner <hannes@cmpxchg.org>
+Cc: Nhat Pham <nphamcs@gmail.com>
+Cc: Shakeel Butt <shakeel.butt@linux.dev>
+Cc: Vitaly Wool <vitaly.wool@konsulko.se>
+Cc: David Hildenbrand <david@redhat.com>
+Cc: Yosry Ahmed <yosry.ahmed@linux.dev>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ mm/zblock.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/mm/zblock.c b/mm/zblock.c
+index ecc7aeb611af9c..6afe6986260dd1 100644
+--- a/mm/zblock.c
++++ b/mm/zblock.c
+@@ -328,7 +328,7 @@ static void zblock_zpool_destroy(void *pool)
+ }
+ 
+ static int zblock_zpool_malloc(void *pool, size_t size, gfp_t gfp,
+-			unsigned long *handle)
++			unsigned long *handle, const int nid)
+ {
+ 	return zblock_alloc(pool, size, gfp, handle);
+ }
+-- 
+cgit 1.2.3-korg
+

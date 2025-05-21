@@ -1,0 +1,47 @@
+From: Shakeel Butt <shakeel.butt@linux.dev>
+Subject: Re: [PATCH] memcg: multi-memcg percpu charge cache
+Date: Wed, 30 Apr 2025 08:32:42 -0700
+Content-Type: text/plain; charset=us-ascii
+
+Andrew, please find another fix/improvements for this patch below.
+
+From: Shakeel Butt <shakeel.butt@linux.dev>
+Date: Wed, 30 Apr 2025 08:28:23 -0700
+Subject: [PATCH] memcg: multi-memcg percpu charge cache - fix 4
+
+Add comment suggested by Michal and use DEFINE_PER_CPU_ALIGNED instead
+of DEFINE_PER_CPU suggested by Vlastimil.
+
+Signed-off-by: Shakeel Butt <shakeel.butt@linux.dev>
+---
+ mm/memcontrol.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/mm/memcontrol.c b/mm/memcontrol.c
+index 5a07e0375254..b877287aeb11 100644
+--- a/mm/memcontrol.c
++++ b/mm/memcontrol.c
+@@ -1775,6 +1775,10 @@ void mem_cgroup_print_oom_group(struct mem_cgroup *memcg)
+ 	pr_cont(" are going to be killed due to memory.oom.group set\n");
+ }
+ 
++/*
++ * The value of NR_MEMCG_STOCK is selected to keep the cached memcgs and their
++ * nr_pages in a single cacheline. This may change in future.
++ */
+ #define NR_MEMCG_STOCK 7
+ struct memcg_stock_pcp {
+ 	local_trylock_t stock_lock;
+@@ -1791,7 +1795,7 @@ struct memcg_stock_pcp {
+ 	unsigned long flags;
+ #define FLUSHING_CACHED_CHARGE	0
+ };
+-static DEFINE_PER_CPU(struct memcg_stock_pcp, memcg_stock) = {
++static DEFINE_PER_CPU_ALIGNED(struct memcg_stock_pcp, memcg_stock) = {
+ 	.stock_lock = INIT_LOCAL_TRYLOCK(stock_lock),
+ };
+ static DEFINE_MUTEX(percpu_charge_mutex);
+-- 
+2.47.1
+
+
