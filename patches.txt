@@ -1,3 +1,15 @@
+https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.15/all/0001-cachyos-base-all.patch
+https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.15/misc/dkms-clang.patch
+https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.15/sched/0001-bore-cachy.patch
+https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.15/misc/nvidia/0001-Enable-atomic-kernel-modesetting-by-default.patch
+https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.15/misc/nvidia/0002-Add-IBT-support.patch
+https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.15/misc/nvidia/0003-Kbuild-Convert-EXTRA_CFLAGS-to-ccflags-y.patch
+https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.15/misc/nvidia/0004-kernel-open-nvidia-Use-new-timer-functions-for-6.15.patch
+https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.15/misc/nvidia/0005-nvidia-uvm-Use-__iowrite64_hi_lo.patch
+https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.15/misc/nvidia/0006-nvidia-uvm-Use-page_pgmap.patch
+https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.15/misc/nvidia/0007-nvidia-uvm-Convert-make_device_exclusive_range-to-ma.patch
+https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.15/misc/nvidia/0008-kbuild-Add-workaround-for-GCC-15-Compilation.patch
+https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.15/misc/0001-handheld.patch
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.15/misc/0001-acpi-call.patch
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.15/misc/0001-aufs-6.15-merge-v20250519.patch
 https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.15-rc/clang-patches/0001-clang-patches.patch
