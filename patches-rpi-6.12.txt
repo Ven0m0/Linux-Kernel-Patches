@@ -1,6 +1,6 @@
-https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/0002-bbr3.patch
+https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/0002-bbr3.patch 
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/0003-cachy.patch
-https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/0004-fixes.patch
+https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/0004-fixes.patch 
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/0005-ntsync.patch
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/0006-perf-per-core.patch
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/0008-zstd.patch
@@ -10,7 +10,6 @@ https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/
 https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-6.12.y-xanmod/net/tcp/cloudflare/0001-tcp-Add-a-sysctl-to-skip-tcp-collapse-processing-whe.patch
 https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.12/cachyos-dev-patches-sep/0006-sched-fair-Do-not-compute-overloaded-status-unnecess.patch
 https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.12/cachyos-dev-patches-sep/0005-sched-fair-Do-not-compute-NUMA-Balancing-stats-unnec.patch
-https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.12/clearlinux-patches-sep/0001-sched-core-add-some-branch-hints-based-on-gcov-analy.patch
 https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.12/clearlinux-patches-sep/0002-pci-pme-wakeups.patch
 https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.12/clearlinux-patches-sep/0003-smpboot-reuse-timer-calibration.patch
 https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.12/clearlinux-patches-sep/0004-ipv4-tcp-allow-the-memory-tuning-for-tcp-to-go-a-lit.patch
@@ -29,4 +28,3 @@ https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-6.12.y-xanmod/xanmod/
 https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-6.12.y-xanmod/xanmod/0008-XANMOD-block-Set-rq_affinity-to-force-complete-I-O-r.patch
 https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-6.12.y-xanmod/xanmod/0009-XANMOD-blk-wbt-Set-wbt_default_latency_nsec-to-2msec.patch
 https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-6.12.y-xanmod/xanmod/0016-XANMOD-lib-kconfig.debug-disable-default-SYMBOLIC_ER.patch
-https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/libsgrowdown.patch
