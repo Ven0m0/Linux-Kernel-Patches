@@ -10,6 +10,8 @@ https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.15/
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.15/misc/nvidia/0007-nvidia-uvm-Convert-make_device_exclusive_range-to-ma.patch
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.15/misc/nvidia/0008-kbuild-Add-workaround-for-GCC-15-Compilation.patch
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.15/misc/0001-handheld.patch
+https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.15/mm-zblock-patches/0001-mm-add-zblock-allocator.patch
+https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.15/mm-kcompressd-patches/0001-mm-Add-Kcompressd-for-accelerated-memory-compression.patch
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.15/misc/0001-acpi-call.patch
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.15/misc/0001-aufs-6.15-merge-v20250519.patch
 https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-6.14.y-xanmod/net/tcp/cloudflare/0001-tcp-Add-a-sysctl-to-skip-tcp-collapse-processing-whe.patch
