@@ -4,7 +4,6 @@ https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/0005-ntsync.patch
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/0006-perf-per-core.patch
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/0008-zstd.patch
-https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/sched/0001-prjc-cachy.patch
 https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.12/clang-patches-v3/0001-clang-patches.patch
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/misc/0001-preempt-lazy.patch
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/misc/dkms-clang.patch
@@ -25,7 +24,6 @@ https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.1
 https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.12/clearlinux-patches-sep/0015-clear-net-sock-Introduce-64KB-reclaim-threshold.patch
 https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.12/clearlinux-patches-sep/0016-clear-init-init_task-Tweak-timer_slack-value.patch
 https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.12/cpuidle-patches/0001-cpuidle-patches.patch
-https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.12/zram-patches-all/0001-zram-patches.patch
 https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-6.12.y-xanmod/xanmod/0006-XANMOD-block-mq-deadline-Increase-write-priority-to-.patch
 https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-6.12.y-xanmod/xanmod/0007-XANMOD-block-mq-deadline-Disable-front_merges-by-def.patch
 https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-6.12.y-xanmod/xanmod/0008-XANMOD-block-Set-rq_affinity-to-force-complete-I-O-r.patch
