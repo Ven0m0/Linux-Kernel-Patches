@@ -1,0 +1,187 @@
+From mboxrd@z Thu Jan  1 00:00:00 1970
+Received: from mail-pl1-f170.google.com (mail-pl1-f170.google.com [209.85.214.170])
+	(using TLSv1.2 with cipher ECDHE-RSA-AES128-GCM-SHA256 (128/128 bits))
+	(No client certificate requested)
+	by smtp.subspace.kernel.org (Postfix) with ESMTPS id 607EA24A05A
+	for <linux-kernel@vger.kernel.org>; Wed, 12 Mar 2025 13:48:12 +0000 (UTC)
+Authentication-Results: smtp.subspace.kernel.org; arc=none smtp.client-ip=209.85.214.170
+ARC-Seal:i=1; a=rsa-sha256; d=subspace.kernel.org; s=arc-20240116;
+	t=1741787293; cv=none; b=QRPj2hjMsf9jhlNREgEg0RcDq3d/fTQax1HKO/fRYcc/GBwgzzcoIXO9iTKGtqWgiQliJPvG5k5lMRnBhtMZvRFSG8wPoMYB4cCzVruaropEgSS4E2Yz1TRCNbPB3awmdMAc9QoJwr6Gt4dvU6GUUncUeASLRM0DGcLoOJ/Z1Ss=
+ARC-Message-Signature:i=1; a=rsa-sha256; d=subspace.kernel.org;
+	s=arc-20240116; t=1741787293; c=relaxed/simple;
+	bh=IKEIP4fJTqTXMvwxjbKhs9aEDZULEhMuo2mc4NOJOSI=;
+	h=From:To:Cc:Subject:Date:Message-Id:MIME-Version; b=kKeLxlQlyg3q2Rsns/8FFENwepGbiDugYAcpxp2BZSQRN1n+anRGC4nvBWif0u/3s5nYeW1CiNrqiFqArzYvgpfA6sOaPPqoDyRJuQ6kDzBcyJHOaS7upRFDeTSevJnfZo2euZDsvznvbXpZo0mlFVP7D1qulQBDTQwROv3+Bpg=
+ARC-Authentication-Results:i=1; smtp.subspace.kernel.org; dmarc=pass (p=none dis=none) header.from=gmail.com; spf=pass smtp.mailfrom=gmail.com; dkim=pass (2048-bit key) header.d=gmail.com header.i=@gmail.com header.b=kOk37F15; arc=none smtp.client-ip=209.85.214.170
+Authentication-Results: smtp.subspace.kernel.org; dmarc=pass (p=none dis=none) header.from=gmail.com
+Authentication-Results: smtp.subspace.kernel.org; spf=pass smtp.mailfrom=gmail.com
+Authentication-Results: smtp.subspace.kernel.org;
+	dkim=pass (2048-bit key) header.d=gmail.com header.i=@gmail.com header.b="kOk37F15"
+Received: by mail-pl1-f170.google.com with SMTP id d9443c01a7336-22337bc9ac3so127800395ad.1
+        for <linux-kernel@vger.kernel.org>; Wed, 12 Mar 2025 06:48:12 -0700 (PDT)
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=gmail.com; s=20230601; t=1741787291; x=1742392091; darn=vger.kernel.org;
+        h=content-transfer-encoding:mime-version:message-id:date:subject:cc
+         :to:from:from:to:cc:subject:date:message-id:reply-to;
+        bh=jSwDKAAj0pO9DLdE+iZ6p68KGUCERNcDNq7Ff/vTm8I=;
+        b=kOk37F15Po2OOP/wNwiGFQXmH5wSRULk1uFXBK1Zk/hsDJ0qUvC+dRUEZGrfuth3ME
+         nowRfYgrYruNZ93naPVAbrBLQvA3W5LRD18u8TUvhEPDAhZikQbJoJb6+p0F8Ubz5Vb6
+         uYwZL3q0LknP2j3CDKj8+AtOR870XCnXnfjMRprfFd3lVxjQSOj3ViPWSqKUlxiT47q3
+         itYuGpzt/lViry7YfPyY7ZEVHH6c2R8pGgLaV2s5Q1b2s1w6RdhVH9mdk093VnqU5dQc
+         P7e96G4Fi7duXZrUFT1w6S18xB7nlPMrRTSdQ1STYnQ4zTC4HRf/NHq4LpGqEQdnzr/8
+         zU7g==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20230601; t=1741787291; x=1742392091;
+        h=content-transfer-encoding:mime-version:message-id:date:subject:cc
+         :to:from:x-gm-message-state:from:to:cc:subject:date:message-id
+         :reply-to;
+        bh=jSwDKAAj0pO9DLdE+iZ6p68KGUCERNcDNq7Ff/vTm8I=;
+        b=MbdqRwf9hv5ZprNJYOXJpFYmm7uoQVru/SGSa7iCQIzaWpBxG2LfGUVAzscVTe6+jv
+         pxVMFemximaxYLhplQiiWDPUixWbdOjvnB878iaVu2JeDmSYDq01ayom1T9uwWZspRzn
+         4cOfafx7db+HBFvf1PWDNoCVsapEWyaJ+neexormR8qs+qImlhaPycWMMAXYCcl6rBNh
+         I4fXWLpFMCN/I59ELHMdUqt3RK8BQloP8awS4MlQ8DWzw2djOJT3vcND1RgUEBR4kNb7
+         slMaMI51Q0z1XiUv+oRNu4EHxDhyqGnqlcOdiqiZxHe9j52lSV25erip9jTRo1vwSV3K
+         lFkw==
+X-Forwarded-Encrypted: i=1; AJvYcCVTgQP/noURzVt8DG097nWXjIfgkYYecoissUEdQhWL0CB6+knqsd4d2h/k8okVpxstBqmsLH2KBLUUuFk=@vger.kernel.org
+X-Gm-Message-State: AOJu0YwbSgpFVPfUDH7VobwF4zqkKiFVd3P2KHeih96ZSO235QroSpD/
+	Mt+oy6V8tsAHSJjntzm5PAbA3xz1ebpmSEuaXib9mZ4ObxCVSgcx
+X-Gm-Gg: ASbGncuOodvG8GLsTq4CYcimtWCd9LxNYMtC7wkkCSCJZh5FOcMRkaP5rTOx/JlvVzJ
+	o8WbWzO0IKCMPb2y1dYIbwkuQz4A7ak2IaxrTeakyGtjv6irCh3xra2GDoyCBisTxyH46zS735C
+	ZzCen0vGuA4AqgT7pMhGXMM0m2igSYBrSXqJBXafmAYo6xKsqSzeWxN0VCOM+A2nRY19+mey71r
+	3pJKnSyJz373DwM8eeSBHQF8loZFlNlP0Y8alUh9cNytLemYr/rXSssoXhlbtcSv6VLTv/rt0iu
+	KZDtu0kwu4mVfp2AldIt9+v+lrxVI50BcCghobWLnmQAT/M1Xsac8vBlLCyBjhwsvUqW7FcoQg=
+	=
+X-Google-Smtp-Source: AGHT+IGIq/cWnHt3emJsrqyh44YzFU/yOq7HRAOXl+9E6iIw03sZKbZ0/BJgI36js0tMzooij4tuWg==
+X-Received: by 2002:a17:903:2308:b0:220:ce37:e31f with SMTP id d9443c01a7336-22592e2cb8emr105011415ad.17.1741787291606;
+        Wed, 12 Mar 2025 06:48:11 -0700 (PDT)
+Received: from DESKTOP-B5TBVBT.localdomain ([175.117.51.71])
+        by smtp.gmail.com with ESMTPSA id d9443c01a7336-22410a7f9e0sm115591195ad.113.2025.03.12.06.48.09
+        (version=TLS1_3 cipher=TLS_AES_256_GCM_SHA384 bits=256/256);
+        Wed, 12 Mar 2025 06:48:11 -0700 (PDT)
+From: Yohan Joung <jyh429@gmail.com>
+X-Google-Original-From: Yohan Joung <yohan.joung@sk.com>
+To: jaegeuk@kernel.org,
+	chao@kernel.org,
+	daeho43@gmail.com
+Cc: linux-f2fs-devel@lists.sourceforge.net,
+	linux-kernel@vger.kernel.org,
+	Yohan Joung <yohan.joung@sk.com>
+Subject: [PATCH v1] f2fs: optimize f2fs DIO overwrites
+Date: Wed, 12 Mar 2025 22:48:05 +0900
+Message-Id: <20250312134805.362-1-yohan.joung@sk.com>
+X-Mailer: git-send-email 2.25.1
+Precedence: bulk
+X-Mailing-List: linux-kernel@vger.kernel.org
+List-Id: <linux-kernel.vger.kernel.org>
+List-Subscribe: <mailto:linux-kernel+subscribe@vger.kernel.org>
+List-Unsubscribe: <mailto:linux-kernel+unsubscribe@vger.kernel.org>
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+
+this is unnecessary when we know we are overwriting already allocated
+blocks and the overhead of starting a transaction can be significant
+especially for multithreaded workloads doing small writes.
+
+Signed-off-by: Yohan Joung <yohan.joung@sk.com>
+---
+ fs/f2fs/data.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/fs/f2fs/data.c b/fs/f2fs/data.c
+index d872f785a996..b55d253f7be9 100644
+--- a/fs/f2fs/data.c
++++ b/fs/f2fs/data.c
+@@ -4181,7 +4181,8 @@ static int f2fs_iomap_begin(struct inode *inode, loff_t offset, loff_t length,
+ 	map.m_next_pgofs = &next_pgofs;
+ 	map.m_seg_type = f2fs_rw_hint_to_seg_type(F2FS_I_SB(inode),
+ 						inode->i_write_hint);
+-	if (flags & IOMAP_WRITE)
++	if ((flags & IOMAP_WRITE) &&
++		!f2fs_overwrite_io(inode, offset, length))
+ 		map.m_may_create = true;
+ 
+ 	err = f2fs_map_blocks(inode, &map, F2FS_GET_BLOCK_DIO);
+-- 
+2.25.1
+
+
+From mboxrd@z Thu Jan  1 00:00:00 1970
+Received: from smtp.kernel.org (aws-us-west-2-korg-mail-1.web.codeaurora.org [10.30.226.201])
+	(using TLSv1.2 with cipher ECDHE-RSA-AES256-GCM-SHA384 (256/256 bits))
+	(No client certificate requested)
+	by smtp.subspace.kernel.org (Postfix) with ESMTPS id 210ED207E14
+	for <linux-kernel@vger.kernel.org>; Mon, 17 Mar 2025 03:20:28 +0000 (UTC)
+Authentication-Results: smtp.subspace.kernel.org; arc=none smtp.client-ip=10.30.226.201
+ARC-Seal:i=1; a=rsa-sha256; d=subspace.kernel.org; s=arc-20240116;
+	t=1742181629; cv=none; b=juINKnPn5YXRiO7Hs4JJ9RAPXAlMXLg/WXA0EbN4s+3CwAM+SjUMeBUICxFzUHML/yyKAOgA7Phw5J0JysODSJJO2+CePFthNlWF96k4C0qnPcjsgBTLihCNEMxugBTIkK4/uiIetNzBAiHj0/zYsPrwIdM53KL6WQov/LJVo5I=
+ARC-Message-Signature:i=1; a=rsa-sha256; d=subspace.kernel.org;
+	s=arc-20240116; t=1742181629; c=relaxed/simple;
+	bh=na9zDyLGCts4zvbhbnkO+YnZ1DfpFRD6cSk88Yd3fd8=;
+	h=Message-ID:Date:MIME-Version:Cc:Subject:To:References:From:
+	 In-Reply-To:Content-Type; b=rLfQwLFB8cUu40VQn4a2q/BCHgm4NkEueTArw0EfciuCYAqhxe4mF8usRUnAykU3s4V70LlsW+mhaTeJ9TKHD8Vk1GpNE9Atx9+s2046jgCZMw9T8Fe6QnXI6j8EqKfMhD72U7ns6VWfh8sRmyokgEOUGSnyIf3dTVvo+5258wQ=
+ARC-Authentication-Results:i=1; smtp.subspace.kernel.org; dkim=pass (2048-bit key) header.d=kernel.org header.i=@kernel.org header.b=g/Q2ClrZ; arc=none smtp.client-ip=10.30.226.201
+Authentication-Results: smtp.subspace.kernel.org;
+	dkim=pass (2048-bit key) header.d=kernel.org header.i=@kernel.org header.b="g/Q2ClrZ"
+Received: by smtp.kernel.org (Postfix) with ESMTPSA id 3DE44C4CEDD;
+	Mon, 17 Mar 2025 03:20:27 +0000 (UTC)
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/simple; d=kernel.org;
+	s=k20201202; t=1742181628;
+	bh=na9zDyLGCts4zvbhbnkO+YnZ1DfpFRD6cSk88Yd3fd8=;
+	h=Date:Cc:Subject:To:References:From:In-Reply-To:From;
+	b=g/Q2ClrZM9mzpJD9kygj613MO2sLMyM7EwJ5BhQ2LE2zFtc/VXz/OuSMFs6glsIqR
+	 JgYH+oXbyioDQkWpGMGNQZMAJkUlyUd4V7vokitTy3e2w6Av2EZoFpHJyhx/EL2eK0
+	 Ui3ooDZVGhBc78nktNMBwfZ2vNBKXG3tdHdx44XzUo6dmIGYC12xTST1eXnjrvkgMq
+	 6AFjre2q9RnIPx+acObHEkiTse7lEU7Cb1IPHG/O/T9IyycStt+kZzI3UkUAL9HUds
+	 tM3xcpo2NsokBHXeg24du/Hp8b1yrrNTT7Omn+0XkYswHun3z98PaFR/lkiVVZE10g
+	 DrF2T41b6xpqg==
+Message-ID: <d1d43936-1de7-4550-8bf2-f4c604b367d1@kernel.org>
+Date: Mon, 17 Mar 2025 11:20:25 +0800
+Precedence: bulk
+X-Mailing-List: linux-kernel@vger.kernel.org
+List-Id: <linux-kernel.vger.kernel.org>
+List-Subscribe: <mailto:linux-kernel+subscribe@vger.kernel.org>
+List-Unsubscribe: <mailto:linux-kernel+unsubscribe@vger.kernel.org>
+MIME-Version: 1.0
+User-Agent: Mozilla Thunderbird
+Cc: chao@kernel.org, linux-f2fs-devel@lists.sourceforge.net,
+ linux-kernel@vger.kernel.org, Yohan Joung <yohan.joung@sk.com>
+Subject: Re: [PATCH v1] f2fs: optimize f2fs DIO overwrites
+To: Yohan Joung <jyh429@gmail.com>, jaegeuk@kernel.org, daeho43@gmail.com
+References: <20250312134805.362-1-yohan.joung@sk.com>
+Content-Language: en-US
+From: Chao Yu <chao@kernel.org>
+In-Reply-To: <20250312134805.362-1-yohan.joung@sk.com>
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 7bit
+
+On 3/12/25 21:48, Yohan Joung wrote:
+> this is unnecessary when we know we are overwriting already allocated
+> blocks and the overhead of starting a transaction can be significant
+> especially for multithreaded workloads doing small writes.
+> 
+> Signed-off-by: Yohan Joung <yohan.joung@sk.com>
+> ---
+>  fs/f2fs/data.c | 3 ++-
+>  1 file changed, 2 insertions(+), 1 deletion(-)
+> 
+> diff --git a/fs/f2fs/data.c b/fs/f2fs/data.c
+> index d872f785a996..b55d253f7be9 100644
+> --- a/fs/f2fs/data.c
+> +++ b/fs/f2fs/data.c
+> @@ -4181,7 +4181,8 @@ static int f2fs_iomap_begin(struct inode *inode, loff_t offset, loff_t length,
+>  	map.m_next_pgofs = &next_pgofs;
+>  	map.m_seg_type = f2fs_rw_hint_to_seg_type(F2FS_I_SB(inode),
+>  						inode->i_write_hint);
+> -	if (flags & IOMAP_WRITE)
+> +	if ((flags & IOMAP_WRITE) &&
+> +		!f2fs_overwrite_io(inode, offset, length))
+
+Can you please add a comment for this change? Otherwise it looks
+fine to me.
+
+Thanks,
+
+>  		map.m_may_create = true;
+>  
+>  	err = f2fs_map_blocks(inode, &map, F2FS_GET_BLOCK_DIO);
+
+
