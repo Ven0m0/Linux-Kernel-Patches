@@ -4,6 +4,7 @@ https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/0005-ntsync.patch
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/0006-perf-per-core.patch
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/0008-zstd.patch
+https://raw.githubusercontent.com/graysky2/kernel_compiler_patch/refs/heads/master/other/build-with-mcpu-for-cortex-a72.patch
 https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.12/clang-patches-v3/0001-clang-patches.patch
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/misc/0001-preempt-lazy.patch
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/misc/dkms-clang.patch
