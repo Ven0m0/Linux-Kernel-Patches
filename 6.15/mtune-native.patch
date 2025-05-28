@@ -8,8 +8,9 @@
  endif
 --- a/arch/x86/Kconfig.cpu
 +++ b/arch/x86/Kconfig.cpu
-@@ -249,7 +249,7 @@
- config CC_HAS_MARCH_NATIVE
- 	# This flag might not be available in cross-compilers:
--	def_bool $(cc-option, -march=native)
-+	def_bool $(cc-option, -march=native -mtune=native)
+
+--- a/arch/x86/Kconfig.cpu
++++ b/arch/x86/Kconfig.cpu
+@@ -250 +250 @@
+-def_bool $(cc-option, -march=native)
++def_bool $(cc-option, -march=native -mtune=native)
