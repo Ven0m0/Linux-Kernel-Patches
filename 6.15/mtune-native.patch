@@ -1,16 +1,12 @@
 --- a/arch/x86/Makefile
 +++ b/arch/x86/Makefile
-@@ -176,7 +176,7 @@
+@@ -176,2 +176,2 @@
  ifdef CONFIG_X86_NATIVE_CPU
 -        KBUILD_CFLAGS += -march=native
 +        KBUILD_CFLAGS += -march=native -mtune=native
-         KBUILD_RUSTFLAGS += -Ctarget-cpu=native
- endif
 --- a/arch/x86/Kconfig.cpu
 +++ b/arch/x86/Kconfig.cpu
-
---- a/arch/x86/Kconfig.cpu
-+++ b/arch/x86/Kconfig.cpu
-@@ -250 +250 @@
--def_bool $(cc-option, -march=native)
-+def_bool $(cc-option, -march=native -mtune=native)
+@@ -247,2 +247,2 @@
+ config CC_HAS_MARCH_NATIVE
+-	def_bool $(cc-option, -march=native)
++	def_bool $(cc-option, -march=native -mtune=native)
