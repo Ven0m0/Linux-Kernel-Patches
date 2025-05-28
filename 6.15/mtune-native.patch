@@ -1,11 +1,9 @@
---- /home/ven0m0/.cache/cachyos-km/pkgbuilds/linux-cachyos/src/linux-6.15/arch/x86/Makefile	2025-05-28 20:31:06.269640957 +0200
-+++ /home/ven0m0/Downloads/Makefile	2025-05-28 06:06:45.997615961 +0200
-@@ -174,7 +174,7 @@
- 	KBUILD_CFLAGS += $(call cc-option,-mskip-rax-setup)
+--- a/arch/x86/Makefile
++++ b/arch/x86/Makefile
+@@ -176,7 +176,7 @@
  
  ifdef CONFIG_X86_NATIVE_CPU
--        KBUILD_CFLAGS += -march=native -mtune=native
-+        KBUILD_CFLAGS += -march=native
+-        KBUILD_CFLAGS += -march=native
++        KBUILD_CFLAGS += -march=native -mtune=native
          KBUILD_RUSTFLAGS += -Ctarget-cpu=native
  endif
- 
