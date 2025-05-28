@@ -2,7 +2,8 @@ https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.15/
 https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.15/mm-zblock-patches/0001-mm-add-zblock-allocator.patch
 https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.15/mm-kcompressd-patches/0001-mm-Add-Kcompressd-for-accelerated-memory-compression.patch
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.15/misc/0001-acpi-call.patch
-https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.15/clang-patches/0001-clang-patches.patch
+https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.15/misc/0001-clang-polly.patch
+# https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.15/clang-patches/0001-clang-patches.patch
 https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-6.14.y-xanmod/net/tcp/cloudflare/0001-tcp-Add-a-sysctl-to-skip-tcp-collapse-processing-whe.patch
 https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-6.14.y-xanmod/xanmod/0007-XANMOD-block-mq-deadline-Increase-write-priority-to-.patch
 https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-6.14.y-xanmod/xanmod/0008-XANMOD-block-mq-deadline-Disable-front_merges-by-def.patch
