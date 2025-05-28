@@ -1,0 +1,11 @@
+--- a/arch/x86/Kconfig.cpu
++++ b/arch/x86/Kconfig.cpu
+@@ -247,7 +247,7 @@
+ 
+ config CC_HAS_MARCH_NATIVE
+ 	# This flag might not be available in cross-compilers:
+-	def_bool $(cc-option, -march=native)
++	def_bool $(cc-option, -march=native -mtune=native)
+ 	# LLVM 18 has an easily triggered internal compiler error in core
+ 	# networking code with '-march=native' on certain systems:
+ 	# https://github.com/llvm/llvm-project/issues/72026
