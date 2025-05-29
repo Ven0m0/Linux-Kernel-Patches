@@ -55,7 +55,7 @@ https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/ratelimi
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/libsgrowdown.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/epp-retune.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/scale-net-alloc.patch
-
+https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/posted_msi.patch
 
 
 https://raw.githubusercontent.com/Ven0m0/Linux-Kernel-Patches/refs/heads/main/6.15/mtune-native.patch
