@@ -1,0 +1,106 @@
+From 2b65a1329cb220b43c19c4d0de5833fae9e2b22d Mon Sep 17 00:00:00 2001
+From: Alexandre Frade <admfrade@gmail.com>
+Date: Wed, 24 Oct 2018 16:58:52 -0300
+Subject: [PATCH 10/17] net/sched: allow configuring cake qdisc as default
+
+Signed-off-by: Alexandre Frade <admfrade@gmail.com>
+---
+ net/sched/Kconfig | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/net/sched/Kconfig b/net/sched/Kconfig
+index 84badf00647e..6a922bca9f39 100644
+--- a/net/sched/Kconfig
++++ b/net/sched/Kconfig
+@@ -471,6 +471,9 @@ choice
+ 	config DEFAULT_SFQ
+ 		bool "Stochastic Fair Queue" if NET_SCH_SFQ
+ 
++	config DEFAULT_CAKE
++		bool "Common Applications Kept Enhanced" if NET_SCH_CAKE
++
+ 	config DEFAULT_PFIFO_FAST
+ 		bool "Priority FIFO Fast"
+ endchoice
+@@ -481,6 +484,7 @@ config DEFAULT_NET_SCH
+ 	default "fq" if DEFAULT_FQ
+ 	default "fq_codel" if DEFAULT_FQ_CODEL
+ 	default "sfq" if DEFAULT_SFQ
++	default "cake" if DEFAULT_CAKE
+ 	default "pfifo_fast"
+ endif
+ 
+-- 
+2.28.0
+
+From 3c229f434aca65c4ca61772bc03c3e0370817b92 Mon Sep 17 00:00:00 2001
+From: Alexandre Frade <kernel@xanmod.org>
+Date: Mon, 3 Aug 2020 17:05:04 +0000
+Subject: [PATCH 16/17] mm: set 2 megabytes for address_space-level file
+ read-ahead pages size
+
+Signed-off-by: Alexandre Frade <kernel@xanmod.org>
+---
+ include/linux/pagemap.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/include/linux/pagemap.h b/include/linux/pagemap.h
+index cf2468da68e9..007dea784451 100644
+--- a/include/linux/pagemap.h
++++ b/include/linux/pagemap.h
+@@ -655,7 +655,7 @@ int replace_page_cache_page(struct page *old, struct page *new, gfp_t gfp_mask);
+ void delete_from_page_cache_batch(struct address_space *mapping,
+ 				  struct pagevec *pvec);
+ 
+-#define VM_READAHEAD_PAGES	(SZ_128K / PAGE_SIZE)
++#define VM_READAHEAD_PAGES	(SZ_2M / PAGE_SIZE)
+ 
+ void page_cache_sync_readahead(struct address_space *, struct file_ra_state *,
+ 		struct file *, pgoff_t index, unsigned long req_count);
+-- 
+2.28.0
+
+From 2aafb56f20e4b63d8c4af172fe9d017c64bc4129 Mon Sep 17 00:00:00 2001
+From: Sultan Alsawaf <sultan@kerneltoast.com>
+Date: Wed, 20 Oct 2021 20:50:11 -0700
+Subject: [PATCH] ZEN: mm: Lower the non-hugetlbpage pageblock size to reduce
+ scheduling delays
+
+The page allocator processes free pages in groups of pageblocks, where
+the size of a pageblock is typically quite large (1024 pages without
+hugetlbpage support). Pageblocks are processed atomically with the zone
+lock held, which can cause severe scheduling delays on both the CPU
+going through the pageblock and any other CPUs waiting to acquire the
+zone lock. A frequent offender is move_freepages_block(), which is used
+by rmqueue() for page allocation.
+
+As it turns out, there's no requirement for pageblocks to be so large,
+so the pageblock order can simply be reduced to ease the scheduling
+delays and zone lock contention. PAGE_ALLOC_COSTLY_ORDER is used as a
+reasonable setting to ensure non-costly page allocation requests can
+still be serviced without always needing to free up more than one
+pageblock's worth of pages at a time.
+
+This has a noticeable effect on overall system latency when memory
+pressure is elevated. The various mm functions which operate on
+pageblocks no longer appear in the preemptoff tracer, where previously
+they would spend up to 100 ms on a mobile arm64 CPU processing a
+pageblock with preemption disabled and the zone lock held.
+
+Signed-off-by: Sultan Alsawaf <sultan@kerneltoast.com>
+---
+ include/linux/pageblock-flags.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/include/linux/pageblock-flags.h b/include/linux/pageblock-flags.h
+index 5f1ae07d724b88..97cda629c9e909 100644
+--- a/include/linux/pageblock-flags.h
++++ b/include/linux/pageblock-flags.h
+@@ -48,7 +48,7 @@ extern unsigned int pageblock_order;
+ #else /* CONFIG_HUGETLB_PAGE */
+
+ /* If huge pages are not used, group by MAX_ORDER_NR_PAGES */
+-#define pageblock_order		MAX_PAGE_ORDER
++#define pageblock_order		PAGE_ALLOC_COSTLY_ORDER
+
+ #endif /* CONFIG_HUGETLB_PAGE */
