@@ -6,6 +6,14 @@ set -e
 
 cd "$1" || { echo "Directory not found: $1"; exit 1; }
 
+# commands:
+#     --enable   | -e option   Enable option
+#     --disable  | -d option   Disable option
+#     --module   | -m option   Turn option into a module
+#     --set-str option string  Set option to "string"
+#     --set-val option value   Set option to value
+#     --undefine | -u option   Undefine option
+
 ### Answer unconfigured (NEW) kernel options in the CachyOS config.
 scripts/config -d DRM_MGAG200_DISABLE_WRITECOMBINE
 scripts/config -d GPIO_BT8XX
