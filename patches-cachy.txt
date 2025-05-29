@@ -29,7 +29,8 @@ https://raw.githubusercontent.com/Ven0m0/Linux-Kernel-Patches/refs/heads/main/6.
 https://raw.githubusercontent.com/Ven0m0/Linux-Kernel-Patches/refs/heads/main/6.15/zram-writeback.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0174-memcg-increase-MEMCG_CHARGE_BATCH-to-128.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0175-readdir-add-unlikely-hint-on-len-check.patch
-
+https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0149-select-do_pollfd-add-unlikely-branch-hint-return-pat.patch
+https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0150-select-core_sys_select-add-unlikely-branch-hint-on-r.patch
 https://raw.githubusercontent.com/GloriousEggroll/Linux-Pollrate-Patch/refs/heads/main/pollrate.patch
 
 
