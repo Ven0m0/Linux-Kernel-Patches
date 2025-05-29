@@ -37,6 +37,7 @@ https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0104-pci
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0106-intel_idle-tweak-cpuidle-cstates.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0108-smpboot-reuse-timer-calibration.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0111-ipv4-tcp-allow-the-memory-tuning-for-tcp-to-go-a-lit.patch
+https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0112-init-wait-for-partition-and-retry-scan.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0116-migrate-some-systemd-defaults-to-the-kernel-defaults.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0117-xattr-allow-setting-user.-attributes-on-symlinks-by-.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0125-nvme-workaround.patch
