@@ -1,0 +1,13 @@
+diff --git a/include/f2fs_fs.h b/include/f2fs_fs.h
+index f890634..1be77f1 100644
+--- a/include/f2fs_fs.h
++++ b/include/f2fs_fs.h
+@@ -103,7 +103,7 @@ typedef uint16_t	u16;
+ typedef uint8_t		u8;
+ typedef u32		block_t;
+ typedef u32		nid_t;
+-#ifndef bool
++#if defined __STDC__ && defined __STDC_VERSION__ && __STDC_VERSION__ <= 201710L
+ typedef u8		bool;
+ #endif
+ typedef unsigned long	pgoff_t;
