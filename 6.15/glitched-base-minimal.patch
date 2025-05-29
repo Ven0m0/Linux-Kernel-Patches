@@ -31,7 +31,6 @@ index 84badf00647e..6a922bca9f39 100644
  endif
  
 -- 
-2.28.0
 
 From 3c229f434aca65c4ca61772bc03c3e0370817b92 Mon Sep 17 00:00:00 2001
 From: Alexandre Frade <kernel@xanmod.org>
@@ -58,7 +57,6 @@ index cf2468da68e9..007dea784451 100644
  void page_cache_sync_readahead(struct address_space *, struct file_ra_state *,
  		struct file *, pgoff_t index, unsigned long req_count);
 -- 
-2.28.0
 
 From 2aafb56f20e4b63d8c4af172fe9d017c64bc4129 Mon Sep 17 00:00:00 2001
 From: Sultan Alsawaf <sultan@kerneltoast.com>
