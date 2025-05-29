@@ -50,6 +50,7 @@ scripts/config -e USB_STORAGE -e USB_STORAGE_REALTEK -e USB_UAS
 scripts/config -d MSDOS_FS -e FAT_FS -e VFAT_FS
 scripts/config -e EXT4_FS -e FS_MBCACHE -e JBD2
 scripts/config -e BTRFS_FS -e F2FS_FS -e XFS_FS
+scripts/config -d BCACHEFS_FS
 
 ### Set tree-based hierarchical RCU fanout value. (default 64)
 scripts/config --set-val RCU_FANOUT 32
@@ -205,6 +206,187 @@ scripts/config -d VISL_DEBUGFS
 scripts/config -d WCN36XX_DEBUGFS
 scripts/config -d WWAN_DEBUGFS
 scripts/config -d XEN_DEBUG_FS
+scripts/config -d USB_PRINTER
+
+# Disable AMD Secure Memory Encryption (SME) support
+scripts/config -d AMD_MEM_ENCRYPT
+
+# Disable Intel Software Guard eXtensions (SGX)
+scripts/config -d X86_SGX
+
+# Disable direct rendering manager support
+scripts/config -d DRM_ACCEL_AMDXDNA
+scripts/config -d DRM_AMDGPU
+scripts/config -d DRM_APPLETBDRM
+scripts/config -d DRM_ARCPGU
+scripts/config -d DRM_HISI_HIBMC
+scripts/config -d DRM_I915
+scripts/config -d DRM_RADEON
+scripts/config -d DRM_XE
+scripts/config -d DRM_AST
+scripts/config -d DRM_MGAG200
+
+# Disable laptop support
+#scripts/config -d ASUS_LAPTOP
+scripts/config -d CHROMEOS_LAPTOP
+scripts/config -d COMPAL_LAPTOP
+scripts/config -d DELL_LAPTOP
+scripts/config -d EEEPC_LAPTOP
+scripts/config -d FUJITSU_LAPTOP
+scripts/config -d IDEAPAD_LAPTOP
+scripts/config -d LG_LAPTOP
+scripts/config -d MSI_LAPTOP
+scripts/config -d PANASONIC_LAPTOP
+scripts/config -d SAMSUNG_LAPTOP
+scripts/config -d SONY_LAPTOP
+scripts/config -d TOPSTAR_LAPTOP
+
+# Disable platform support
+#scripts/config -d CHROME_PLATFORMS
+scripts/config -d CZNIC_PLATFORMS
+scripts/config -d MELLANOX_PLATFORM
+scripts/config -d SURFACE_PLATFORMS
+
+# Disable PS/2 keyboard and mouse
+scripts/config -d KEYBOARD_ATKBD -d MOUSE_PS2 -d SERIO_I8042
+
+# Disable touchscreen input devices
+scripts/config -d INPUT_TOUCHSCREEN
+
+# Disable Controller Area Network (CAN) bus subsystem support
+scripts/config -d CAN
+
+# Disable industrial I/O subsystem support
+scripts/config -d IIO
+
+# Disable InfiniBand support
+scripts/config -d INFINIBAND
+
+# Disable ServerEngines' 10Gbps NIC - BladeEngine ethernet support
+scripts/config -d BE2NET
+
+# Disable Mellanox Technologies ethernet support
+scripts/config -d MLX4_EN
+scripts/config -d MLX5_CORE
+scripts/config -d MLXSW_CORE
+scripts/config -d MLXFW
+
+# Disable parallel port support
+scripts/config -d PARPORT
+
+# Disable Sonics Silicon Backplane support
+scripts/config -d SSB
+
+# Disable media tuners
+scripts/config -d DVB_CORE
+scripts/config -d VIDEO_BT848
+scripts/config -d VIDEO_CX231XX
+scripts/config -d VIDEO_CX25821
+scripts/config -d VIDEO_CX88
+scripts/config -d VIDEO_DT3155
+scripts/config -d VIDEO_EM28XX
+scripts/config -d VIDEO_GO7007
+scripts/config -d VIDEO_HDPVR
+scripts/config -d VIDEO_HEXIUM_GEMINI
+scripts/config -d VIDEO_HEXIUM_ORION
+scripts/config -d VIDEO_IVTV
+scripts/config -d VIDEO_MXB
+scripts/config -d VIDEO_SAA7134
+scripts/config -d VIDEO_STK1160
+
+# Disable GSPCA based webcams
+scripts/config -d USB_GSPCA
+
+# Disable network drivers
+scripts/config -d NET_VENDOR_ADI
+scripts/config -d NET_VENDOR_AGERE
+scripts/config -d NET_VENDOR_AMAZON
+scripts/config -d NET_VENDOR_AMD
+scripts/config -d NET_VENDOR_AQUANTIA
+scripts/config -d NET_VENDOR_ASIX
+scripts/config -d NET_VENDOR_ATHEROS
+scripts/config -d NET_VENDOR_BROADCOM
+scripts/config -d NET_VENDOR_CADENCE
+scripts/config -d NET_VENDOR_CHELSIO
+scripts/config -d NET_VENDOR_CISCO
+scripts/config -d NET_VENDOR_CORTINA
+scripts/config -d NET_VENDOR_DAVICOM
+scripts/config -d NET_VENDOR_DLINK
+scripts/config -d NET_VENDOR_EMULEX
+scripts/config -d NET_VENDOR_ENGLEDER
+scripts/config -d NET_VENDOR_FUNGIBLE
+scripts/config -d NET_VENDOR_GOOGLE
+scripts/config -d NET_VENDOR_HISILICON
+scripts/config -d NET_VENDOR_HUAWEI
+scripts/config -d NET_VENDOR_I825XX
+scripts/config -d NET_VENDOR_INTEL
+scripts/config -d NET_VENDOR_LITEX
+scripts/config -d NET_VENDOR_MARVELL
+scripts/config -d NET_VENDOR_MELLANOX
+scripts/config -d NET_VENDOR_META
+scripts/config -d NET_VENDOR_MICROSOFT
+scripts/config -d NET_VENDOR_NETRONOME
+scripts/config -d NET_VENDOR_NI
+scripts/config -d NET_VENDOR_PACKET_ENGINES
+scripts/config -d NET_VENDOR_QLOGIC
+scripts/config -d NET_VENDOR_SOCIONEXT
+scripts/config -d NET_VENDOR_SOLARFLARE
+scripts/config -d NET_VENDOR_STMICRO
+scripts/config -d NET_VENDOR_VERTEXCOM
+scripts/config -d NET_VENDOR_WANGXUN
+
+# Disable SLIP (serial line) support
+scripts/config -d SLIP
+
+# Disable Wan interfaces support
+scripts/config -d WAN
+
+# Disable IPv6 over Low power Wireless Personal Area Network
+scripts/config -d 6LOWPAN -d IEEE802154
+
+# Disable wireless LAN drivers
+scripts/config -d WLAN
+
+# Disable wireless vendor support
+# https://github.com/torvalds/linux/blob/master/drivers/net/wireless/
+scripts/config -d WLAN_VENDOR_ADMTEK
+scripts/config -d WLAN_VENDOR_ATH
+scripts/config -d WLAN_VENDOR_ATMEL
+scripts/config -d WLAN_VENDOR_BROADCOM
+scripts/config -d WLAN_VENDOR_INTEL
+scripts/config -d WLAN_VENDOR_INTERSIL
+scripts/config -d WLAN_VENDOR_MARVELL
+scripts/config -d WLAN_VENDOR_MEDIATEK
+scripts/config -d WLAN_VENDOR_PURELIFI
+scripts/config -d WLAN_VENDOR_QUANTENNA
+scripts/config -d WLAN_VENDOR_RALINK
+scripts/config -d WLAN_VENDOR_REALTEK
+scripts/config -d WLAN_VENDOR_RSI
+scripts/config -d WLAN_VENDOR_SILABS
+scripts/config -d WLAN_VENDOR_ST
+scripts/config -d WLAN_VENDOR_TI
+scripts/config -d WLAN_VENDOR_ZYDAS
+
+# Disable misc sound devices
+scripts/config -d SND_HDA_SCODEC_TAS2781_SPI
+scripts/config -d SND_I2S_HI6210_I2S
+scripts/config -d SND_SOC_CHV3_I2S
+scripts/config -d SND_SOC_INTEL_CATPT
+#scripts/config -d SND_SOC
+
+scripts/config -d SND_AD1889
+scripts/config -d SND_ALI5451
+scripts/config -d SND_ALS300
+scripts/config -d SND_ALS4000
+scripts/config -d SND_ASIHPI
+scripts/config -d SND_ATIIXP
+scripts/config -d SND_ATIIXP_MODEM
+scripts/config -d SND_EMU10K1
+scripts/config -d SND_EMU10K1X
+scripts/config -d SND_TRIDENT
+scripts/config -d SND_VIA82XX
+scripts/config -d SND_VIA82XX_MODEM
+scripts/config -d SND_VIRTUOSO
 
 ### Apply various Clear Linux defaults
 if [[ $(uname -m) = *"x86"* ]]; then
