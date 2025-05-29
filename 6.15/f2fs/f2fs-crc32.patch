@@ -1,0 +1,187 @@
+From d005af3b6756e533caf688060281a91e1dae3479 Mon Sep 17 00:00:00 2001
+From: Eric Biggers <ebiggers@google.com>
+Date: Mon, 12 May 2025 22:48:25 -0700
+Subject: f2fs: remove unused sbi argument from checksum functions
+
+Since __f2fs_crc32() now calls crc32() directly, it no longer uses its
+sbi argument.  Remove that, and simplify its callers accordingly.
+
+Signed-off-by: Eric Biggers <ebiggers@google.com>
+Reviewed-by: Chao Yu <chao@kernel.org>
+Signed-off-by: Jaegeuk Kim <jaegeuk@kernel.org>
+---
+ fs/f2fs/checkpoint.c | 13 ++++++-------
+ fs/f2fs/compress.c   |  5 ++---
+ fs/f2fs/f2fs.h       | 20 ++++++--------------
+ fs/f2fs/inode.c      | 13 ++++++-------
+ fs/f2fs/super.c      |  8 ++++----
+ 5 files changed, 24 insertions(+), 35 deletions(-)
+
+diff --git a/fs/f2fs/checkpoint.c b/fs/f2fs/checkpoint.c
+index e7907858eb7068..39ee75321d14e4 100644
+--- a/fs/f2fs/checkpoint.c
++++ b/fs/f2fs/checkpoint.c
+@@ -826,17 +826,16 @@ static void write_orphan_inodes(struct f2fs_sb_info *sbi, block_t start_blk)
+ 	}
+ }
+ 
+-static __u32 f2fs_checkpoint_chksum(struct f2fs_sb_info *sbi,
+-						struct f2fs_checkpoint *ckpt)
++static __u32 f2fs_checkpoint_chksum(struct f2fs_checkpoint *ckpt)
+ {
+ 	unsigned int chksum_ofs = le32_to_cpu(ckpt->checksum_offset);
+ 	__u32 chksum;
+ 
+-	chksum = f2fs_crc32(sbi, ckpt, chksum_ofs);
++	chksum = f2fs_crc32(ckpt, chksum_ofs);
+ 	if (chksum_ofs < CP_CHKSUM_OFFSET) {
+ 		chksum_ofs += sizeof(chksum);
+-		chksum = f2fs_chksum(sbi, chksum, (__u8 *)ckpt + chksum_ofs,
+-						F2FS_BLKSIZE - chksum_ofs);
++		chksum = f2fs_chksum(chksum, (__u8 *)ckpt + chksum_ofs,
++				     F2FS_BLKSIZE - chksum_ofs);
+ 	}
+ 	return chksum;
+ }
+@@ -862,7 +861,7 @@ static int get_checkpoint_version(struct f2fs_sb_info *sbi, block_t cp_addr,
+ 		return -EINVAL;
+ 	}
+ 
+-	crc = f2fs_checkpoint_chksum(sbi, *cp_block);
++	crc = f2fs_checkpoint_chksum(*cp_block);
+ 	if (crc != cur_cp_crc(*cp_block)) {
+ 		f2fs_folio_put(*cp_folio, true);
+ 		f2fs_warn(sbi, "invalid crc value");
+@@ -1505,7 +1504,7 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
+ 	get_sit_bitmap(sbi, __bitmap_ptr(sbi, SIT_BITMAP));
+ 	get_nat_bitmap(sbi, __bitmap_ptr(sbi, NAT_BITMAP));
+ 
+-	crc32 = f2fs_checkpoint_chksum(sbi, ckpt);
++	crc32 = f2fs_checkpoint_chksum(ckpt);
+ 	*((__le32 *)((unsigned char *)ckpt +
+ 				le32_to_cpu(ckpt->checksum_offset)))
+ 				= cpu_to_le32(crc32);
+diff --git a/fs/f2fs/compress.c b/fs/f2fs/compress.c
+index 1e62fdffda0784..b322b9a1429393 100644
+--- a/fs/f2fs/compress.c
++++ b/fs/f2fs/compress.c
+@@ -679,8 +679,7 @@ static int f2fs_compress_pages(struct compress_ctx *cc)
+ 	cc->cbuf->clen = cpu_to_le32(cc->clen);
+ 
+ 	if (fi->i_compress_flag & BIT(COMPRESS_CHKSUM))
+-		chksum = f2fs_crc32(F2FS_I_SB(cc->inode),
+-					cc->cbuf->cdata, cc->clen);
++		chksum = f2fs_crc32(cc->cbuf->cdata, cc->clen);
+ 	cc->cbuf->chksum = cpu_to_le32(chksum);
+ 
+ 	for (i = 0; i < COMPRESS_DATA_RESERVED_SIZE; i++)
+@@ -776,7 +775,7 @@ void f2fs_decompress_cluster(struct decompress_io_ctx *dic, bool in_task)
+ 
+ 	if (!ret && (fi->i_compress_flag & BIT(COMPRESS_CHKSUM))) {
+ 		u32 provided = le32_to_cpu(dic->cbuf->chksum);
+-		u32 calculated = f2fs_crc32(sbi, dic->cbuf->cdata, dic->clen);
++		u32 calculated = f2fs_crc32(dic->cbuf->cdata, dic->clen);
+ 
+ 		if (provided != calculated) {
+ 			if (!is_inode_flag_set(dic->inode, FI_COMPRESS_CORRUPT)) {
+diff --git a/fs/f2fs/f2fs.h b/fs/f2fs/f2fs.h
+index 9432fd15766ad7..d1ea0441a4f460 100644
+--- a/fs/f2fs/f2fs.h
++++ b/fs/f2fs/f2fs.h
+@@ -1976,28 +1976,20 @@ static inline unsigned int f2fs_time_to_wait(struct f2fs_sb_info *sbi,
+ /*
+  * Inline functions
+  */
+-static inline u32 __f2fs_crc32(struct f2fs_sb_info *sbi, u32 crc,
+-			      const void *address, unsigned int length)
++static inline u32 __f2fs_crc32(u32 crc, const void *address,
++			       unsigned int length)
+ {
+ 	return crc32(crc, address, length);
+ }
+ 
+-static inline u32 f2fs_crc32(struct f2fs_sb_info *sbi, const void *address,
+-			   unsigned int length)
++static inline u32 f2fs_crc32(const void *address, unsigned int length)
+ {
+-	return __f2fs_crc32(sbi, F2FS_SUPER_MAGIC, address, length);
++	return __f2fs_crc32(F2FS_SUPER_MAGIC, address, length);
+ }
+ 
+-static inline bool f2fs_crc_valid(struct f2fs_sb_info *sbi, __u32 blk_crc,
+-				  void *buf, size_t buf_size)
++static inline u32 f2fs_chksum(u32 crc, const void *address, unsigned int length)
+ {
+-	return f2fs_crc32(sbi, buf, buf_size) == blk_crc;
+-}
+-
+-static inline u32 f2fs_chksum(struct f2fs_sb_info *sbi, u32 crc,
+-			      const void *address, unsigned int length)
+-{
+-	return __f2fs_crc32(sbi, crc, address, length);
++	return __f2fs_crc32(crc, address, length);
+ }
+ 
+ static inline struct f2fs_inode_info *F2FS_I(struct inode *inode)
+diff --git a/fs/f2fs/inode.c b/fs/f2fs/inode.c
+index 747857a5b1435b..083d52a42bfb25 100644
+--- a/fs/f2fs/inode.c
++++ b/fs/f2fs/inode.c
+@@ -144,15 +144,14 @@ static __u32 f2fs_inode_chksum(struct f2fs_sb_info *sbi, struct page *page)
+ 	unsigned int offset = offsetof(struct f2fs_inode, i_inode_checksum);
+ 	unsigned int cs_size = sizeof(dummy_cs);
+ 
+-	chksum = f2fs_chksum(sbi, sbi->s_chksum_seed, (__u8 *)&ino,
+-							sizeof(ino));
+-	chksum_seed = f2fs_chksum(sbi, chksum, (__u8 *)&gen, sizeof(gen));
++	chksum = f2fs_chksum(sbi->s_chksum_seed, (__u8 *)&ino, sizeof(ino));
++	chksum_seed = f2fs_chksum(chksum, (__u8 *)&gen, sizeof(gen));
+ 
+-	chksum = f2fs_chksum(sbi, chksum_seed, (__u8 *)ri, offset);
+-	chksum = f2fs_chksum(sbi, chksum, (__u8 *)&dummy_cs, cs_size);
++	chksum = f2fs_chksum(chksum_seed, (__u8 *)ri, offset);
++	chksum = f2fs_chksum(chksum, (__u8 *)&dummy_cs, cs_size);
+ 	offset += cs_size;
+-	chksum = f2fs_chksum(sbi, chksum, (__u8 *)ri + offset,
+-						F2FS_BLKSIZE - offset);
++	chksum = f2fs_chksum(chksum, (__u8 *)ri + offset,
++			     F2FS_BLKSIZE - offset);
+ 	return chksum;
+ }
+ 
+diff --git a/fs/f2fs/super.c b/fs/f2fs/super.c
+index 6744b8c65bc822..bd37139d0d9e38 100644
+--- a/fs/f2fs/super.c
++++ b/fs/f2fs/super.c
+@@ -3564,7 +3564,7 @@ static int sanity_check_raw_super(struct f2fs_sb_info *sbi,
+ 			return -EFSCORRUPTED;
+ 		}
+ 		crc = le32_to_cpu(raw_super->crc);
+-		if (!f2fs_crc_valid(sbi, crc, raw_super, crc_offset)) {
++		if (crc != f2fs_crc32(raw_super, crc_offset)) {
+ 			f2fs_info(sbi, "Invalid SB checksum value: %u", crc);
+ 			return -EFSCORRUPTED;
+ 		}
+@@ -4120,7 +4120,7 @@ int f2fs_commit_super(struct f2fs_sb_info *sbi, bool recover)
+ 
+ 	/* we should update superblock crc here */
+ 	if (!recover && f2fs_sb_has_sb_chksum(sbi)) {
+-		crc = f2fs_crc32(sbi, F2FS_RAW_SUPER(sbi),
++		crc = f2fs_crc32(F2FS_RAW_SUPER(sbi),
+ 				offsetof(struct f2fs_super_block, crc));
+ 		F2FS_RAW_SUPER(sbi)->crc = cpu_to_le32(crc);
+ 	}
+@@ -4581,8 +4581,8 @@ static int f2fs_fill_super(struct super_block *sb, void *data, int silent)
+ 
+ 	/* precompute checksum seed for metadata */
+ 	if (f2fs_sb_has_inode_chksum(sbi))
+-		sbi->s_chksum_seed = f2fs_chksum(sbi, ~0, raw_super->uuid,
+-						sizeof(raw_super->uuid));
++		sbi->s_chksum_seed = f2fs_chksum(~0, raw_super->uuid,
++						 sizeof(raw_super->uuid));
+ 
+ 	default_options(sbi, false);
+ 	/* parse mount options */
+-- 
+cgit 1.2.3-korg
+
