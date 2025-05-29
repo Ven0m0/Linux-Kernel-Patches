@@ -27,7 +27,7 @@ https://raw.githubusercontent.com/GloriousEggroll/Linux-Pollrate-Patch/refs/head
 
 
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0002-sched-core-add-some-branch-hints-based-on-gcov-analy.patch
-https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0149-select-do_pollfd-add-unlikely-branch-hint-return-pat.patch
+# https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0149-select-do_pollfd-add-unlikely-branch-hint-return-pat.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0150-select-core_sys_select-add-unlikely-branch-hint-on-r.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0169-mm-mincore-improve-performance-by-adding-an-unlikely.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0170-sched-Add-unlikey-branch-hints-to-several-system-cal.patch
@@ -56,14 +56,7 @@ https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/libsgrow
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/epp-retune.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/scale-net-alloc.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/posted_msi.patch
-https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/revert-regression.patch
 
 https://raw.githubusercontent.com/Ven0m0/Linux-Kernel-Patches/refs/heads/main/6.15/mtune-native.patch
 https://raw.githubusercontent.com/Ven0m0/Linux-Kernel-Patches/refs/heads/main/6.15/0210-cachymod-misc.patch
-
-https://raw.githubusercontent.com/marioroy/cachymod/refs/heads/main/linux-cachymod-6.14/0001-linux6.14.y-optimal-base-slice.patch
-https://raw.githubusercontent.com/marioroy/cachymod/refs/heads/main/linux-cachymod-6.14/0001-sched-fair-remove-cachy-mods.patch
 https://raw.githubusercontent.com/marioroy/cachymod/refs/heads/main/linux-cachymod-6.14/0002-kconfig-add-800Hz.patch
-https://raw.githubusercontent.com/marioroy/cachymod/refs/heads/main/linux-cachymod-6.14/0002-pipe_read-fix.patch
-https://raw.githubusercontent.com/marioroy/cachymod/refs/heads/main/linux-cachymod-6.14/0240-pipe-update.patch
-https://raw.githubusercontent.com/marioroy/cachymod/refs/heads/main/linux-cachymod-6.14/0270-sched-fair-update.patch
