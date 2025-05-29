@@ -1,0 +1,644 @@
+From 19f5ca461d5fc09bdf93a9f8e4bd78ed3a49dc71 Mon Sep 17 00:00:00 2001
+From: Miguel Ojeda <ojeda@kernel.org>
+Date: Fri, 2 May 2025 16:02:33 +0200
+Subject: [PATCH 1/6] objtool/rust: add one more `noreturn` Rust function for
+ Rust 1.87.0
+
+Starting with Rust 1.87.0 (expected 2025-05-15), `objtool` may report:
+
+    rust/core.o: warning: objtool: _R..._4core9panicking9panic_fmt() falls
+    through to next function _R..._4core9panicking18panic_nounwind_fmt()
+
+    rust/core.o: warning: objtool: _R..._4core9panicking18panic_nounwind_fmt()
+    falls through to next function _R..._4core9panicking5panic()
+
+The reason is that `rust_begin_unwind` is now mangled:
+
+    _R..._7___rustc17rust_begin_unwind
+
+Thus add the mangled one to the list so that `objtool` knows it is
+actually `noreturn`.
+
+See commit 56d680dd23c3 ("objtool/rust: list `noreturn` Rust functions")
+for more details.
+
+Alternatively, we could remove the fixed one in `noreturn.h` and relax
+this test to cover both, but it seems best to be strict as long as we can.
+
+Cc: stable@vger.kernel.org # Needed in 6.12.y and later (Rust is pinned in older LTSs).
+Cc: Josh Poimboeuf <jpoimboe@kernel.org>
+Cc: Peter Zijlstra <peterz@infradead.org>
+Reviewed-by: Alice Ryhl <aliceryhl@google.com>
+Link: https://lore.kernel.org/r/20250502140237.1659624-2-ojeda@kernel.org
+Signed-off-by: Miguel Ojeda <ojeda@kernel.org>
+---
+ tools/objtool/check.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tools/objtool/check.c b/tools/objtool/check.c
+index 3a411064fa34..b21b12ec88d9 100644
+--- a/tools/objtool/check.c
++++ b/tools/objtool/check.c
+@@ -227,6 +227,7 @@ static bool is_rust_noreturn(const struct symbol *func)
+ 	       str_ends_with(func->name, "_4core9panicking19assert_failed_inner")			||
+ 	       str_ends_with(func->name, "_4core9panicking30panic_null_pointer_dereference")		||
+ 	       str_ends_with(func->name, "_4core9panicking36panic_misaligned_pointer_dereference")	||
++	       str_ends_with(func->name, "_7___rustc17rust_begin_unwind")				||
+ 	       strstr(func->name, "_4core9panicking13assert_failed")					||
+ 	       strstr(func->name, "_4core9panicking11panic_const24panic_const_")			||
+ 	       (strstr(func->name, "_4core5slice5index24slice_") &&
+
+From a39f3087092716f2bd531d6fdc20403c3dc2a879 Mon Sep 17 00:00:00 2001
+From: Miguel Ojeda <ojeda@kernel.org>
+Date: Fri, 2 May 2025 16:02:34 +0200
+Subject: [PATCH 2/6] rust: allow Rust 1.87.0's `clippy::ptr_eq` lint
+
+Starting with Rust 1.87.0 (expected 2025-05-15) [1], Clippy may expand
+the `ptr_eq` lint, e.g.:
+
+    error: use `core::ptr::eq` when comparing raw pointers
+       --> rust/kernel/list.rs:438:12
+        |
+    438 |         if self.first == item {
+        |            ^^^^^^^^^^^^^^^^^^ help: try: `core::ptr::eq(self.first, item)`
+        |
+        = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#ptr_eq
+        = note: `-D clippy::ptr-eq` implied by `-D warnings`
+        = help: to override `-D warnings` add `#[allow(clippy::ptr_eq)]`
+
+It is expected that a PR to relax the lint will be backported [2] by
+the time Rust 1.87.0 releases, since the lint was considered too eager
+(at least by default) [3].
+
+Thus allow the lint temporarily just in case.
+
+Cc: stable@vger.kernel.org # Needed in 6.12.y and later (Rust is pinned in older LTSs).
+Link: https://github.com/rust-lang/rust-clippy/pull/14339 [1]
+Link: https://github.com/rust-lang/rust-clippy/pull/14526 [2]
+Link: https://github.com/rust-lang/rust-clippy/issues/14525 [3]
+Link: https://lore.kernel.org/r/20250502140237.1659624-3-ojeda@kernel.org
+[ Converted to `allow`s since backport was confirmed. - Miguel ]
+Signed-off-by: Miguel Ojeda <ojeda@kernel.org>
+---
+ rust/kernel/alloc/kvec.rs | 3 +++
+ rust/kernel/list.rs       | 3 +++
+ 2 files changed, 6 insertions(+)
+
+diff --git a/rust/kernel/alloc/kvec.rs b/rust/kernel/alloc/kvec.rs
+index ae9d072741ce..87a71fd40c3c 100644
+--- a/rust/kernel/alloc/kvec.rs
++++ b/rust/kernel/alloc/kvec.rs
+@@ -2,6 +2,9 @@
+ 
+ //! Implementation of [`Vec`].
+ 
++// May not be needed in Rust 1.87.0 (pending beta backport).
++#![allow(clippy::ptr_eq)]
++
+ use super::{
+     allocator::{KVmalloc, Kmalloc, Vmalloc},
+     layout::ArrayLayout,
+diff --git a/rust/kernel/list.rs b/rust/kernel/list.rs
+index a335c3b1ff5e..2054682c5724 100644
+--- a/rust/kernel/list.rs
++++ b/rust/kernel/list.rs
+@@ -4,6 +4,9 @@
+ 
+ //! A linked list implementation.
+ 
++// May not be needed in Rust 1.87.0 (pending beta backport).
++#![allow(clippy::ptr_eq)]
++
+ use crate::sync::ArcBorrow;
+ use crate::types::Opaque;
+ use core::iter::{DoubleEndedIterator, FusedIterator};
+
+From 7129ea6e242b00938532537da41ddf5fa3e21471 Mon Sep 17 00:00:00 2001
+From: Miguel Ojeda <ojeda@kernel.org>
+Date: Fri, 2 May 2025 16:02:35 +0200
+Subject: [PATCH 3/6] rust: clean Rust 1.88.0's `unnecessary_transmutes` lint
+
+Starting with Rust 1.88.0 (expected 2025-06-26) [1][2], `rustc` may
+introduce a new lint that catches unnecessary transmutes, e.g.:
+
+     error: unnecessary transmute
+         --> rust/uapi/uapi_generated.rs:23242:18
+          |
+    23242 |         unsafe { ::core::mem::transmute(self._bitfield_1.get(0usize, 1u8) as u8) }
+          |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: replace this with: `(self._bitfield_1.get(0usize, 1u8) as u8 == 1)`
+          |
+          = note: `-D unnecessary-transmutes` implied by `-D warnings`
+          = help: to override `-D warnings` add `#[allow(unnecessary_transmutes)]`
+
+There are a lot of them (at least 300), but luckily they are all in
+`bindgen`-generated code.
+
+Thus clean all up by allowing it there.
+
+Since unknown lints trigger a lint itself in older compilers, do it
+conditionally so that we can keep the `unknown_lints` lint enabled.
+
+Cc: stable@vger.kernel.org # Needed in 6.12.y and later (Rust is pinned in older LTSs).
+Link: https://github.com/rust-lang/rust/pull/136083 [1]
+Link: https://github.com/rust-lang/rust/issues/136067 [2]
+Reviewed-by: Alice Ryhl <aliceryhl@google.com>
+Link: https://lore.kernel.org/r/20250502140237.1659624-4-ojeda@kernel.org
+Signed-off-by: Miguel Ojeda <ojeda@kernel.org>
+---
+ init/Kconfig         | 3 +++
+ rust/bindings/lib.rs | 1 +
+ rust/uapi/lib.rs     | 1 +
+ 3 files changed, 5 insertions(+)
+
+diff --git a/init/Kconfig b/init/Kconfig
+index 63f5974b9fa6..4cdd1049283c 100644
+--- a/init/Kconfig
++++ b/init/Kconfig
+@@ -140,6 +140,9 @@ config LD_CAN_USE_KEEP_IN_OVERLAY
+ config RUSTC_HAS_COERCE_POINTEE
+ 	def_bool RUSTC_VERSION >= 108400
+ 
++config RUSTC_HAS_UNNECESSARY_TRANSMUTES
++	def_bool RUSTC_VERSION >= 108800
++
+ config PAHOLE_VERSION
+ 	int
+ 	default $(shell,$(srctree)/scripts/pahole-version.sh $(PAHOLE))
+diff --git a/rust/bindings/lib.rs b/rust/bindings/lib.rs
+index 014af0d1fc70..a08eb5518cac 100644
+--- a/rust/bindings/lib.rs
++++ b/rust/bindings/lib.rs
+@@ -26,6 +26,7 @@
+ 
+ #[allow(dead_code)]
+ #[allow(clippy::undocumented_unsafe_blocks)]
++#[cfg_attr(CONFIG_RUSTC_HAS_UNNECESSARY_TRANSMUTES, allow(unnecessary_transmutes))]
+ mod bindings_raw {
+     // Manual definition for blocklisted types.
+     type __kernel_size_t = usize;
+diff --git a/rust/uapi/lib.rs b/rust/uapi/lib.rs
+index 13495910271f..c98d7a8cde77 100644
+--- a/rust/uapi/lib.rs
++++ b/rust/uapi/lib.rs
+@@ -24,6 +24,7 @@
+     unreachable_pub,
+     unsafe_op_in_unsafe_fn
+ )]
++#![cfg_attr(CONFIG_RUSTC_HAS_UNNECESSARY_TRANSMUTES, allow(unnecessary_transmutes))]
+ 
+ // Manual definition of blocklisted types.
+ type __kernel_size_t = usize;
+
+From c016722fd57551f8a6fcf472c9d2bcf2130ea0ec Mon Sep 17 00:00:00 2001
+From: Miguel Ojeda <ojeda@kernel.org>
+Date: Fri, 2 May 2025 16:02:36 +0200
+Subject: [PATCH 4/6] rust: clean Rust 1.88.0's warning about
+ `clippy::disallowed_macros` configuration
+
+Starting with Rust 1.88.0 (expected 2025-06-26) [1], Clippy may start
+warning about paths that do not resolve in the `disallowed_macros`
+configuration:
+
+    warning: `kernel::dbg` does not refer to an existing macro
+      --> .clippy.toml:10:5
+       |
+    10 |     { path = "kernel::dbg", reason = "the `dbg!` macro is intended as a debugging tool" },
+       |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+This is a lint we requested at [2], due to the trouble debugging
+the lint due to false negatives (e.g. [3]), which we use to emulate
+`clippy::dbg_macro` [4]. See commit 8577c9dca799 ("rust: replace
+`clippy::dbg_macro` with `disallowed_macros`") for more details.
+
+Given the false negatives are not resolved yet, it is expected that
+Clippy complains about not finding this macro.
+
+Thus, until the false negatives are fixed (and, even then, probably we
+will need to wait for the MSRV to raise enough), use the escape hatch
+to allow an invalid path.
+
+Cc: stable@vger.kernel.org # Needed in 6.12.y and later (Rust is pinned in older LTSs).
+Link: https://github.com/rust-lang/rust-clippy/pull/14397 [1]
+Link: https://github.com/rust-lang/rust-clippy/issues/11432 [2]
+Link: https://github.com/rust-lang/rust-clippy/issues/11431 [3]
+Link: https://github.com/rust-lang/rust-clippy/issues/11303 [4]
+Reviewed-by: Alice Ryhl <aliceryhl@google.com>
+Link: https://lore.kernel.org/r/20250502140237.1659624-5-ojeda@kernel.org
+Signed-off-by: Miguel Ojeda <ojeda@kernel.org>
+---
+ .clippy.toml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/.clippy.toml b/.clippy.toml
+index 815c94732ed7..137f41d203de 100644
+--- a/.clippy.toml
++++ b/.clippy.toml
+@@ -7,5 +7,5 @@ check-private-items = true
+ disallowed-macros = [
+     # The `clippy::dbg_macro` lint only works with `std::dbg!`, thus we simulate
+     # it here, see: https://github.com/rust-lang/rust-clippy/issues/11303.
+-    { path = "kernel::dbg", reason = "the `dbg!` macro is intended as a debugging tool" },
++    { path = "kernel::dbg", reason = "the `dbg!` macro is intended as a debugging tool", allow-invalid = true },
+ ]
+
+From 211dcf77856db64c73e0c3b9ce0c624ec855daca Mon Sep 17 00:00:00 2001
+From: Miguel Ojeda <ojeda@kernel.org>
+Date: Fri, 2 May 2025 16:02:37 +0200
+Subject: [PATCH 5/6] rust: clean Rust 1.88.0's `clippy::uninlined_format_args`
+ lint
+
+Starting with Rust 1.88.0 (expected 2025-06-26) [1], `rustc` may move
+back the `uninlined_format_args` to `style` from `pedantic` (it was
+there waiting for rust-analyzer suppotr), and thus we will start to see
+lints like:
+
+    warning: variables can be used directly in the `format!` string
+       --> rust/macros/kunit.rs:105:37
+        |
+    105 |         let kunit_wrapper_fn_name = format!("kunit_rust_wrapper_{}", test);
+        |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        |
+        = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#uninlined_format_args
+    help: change this to
+        |
+    105 -         let kunit_wrapper_fn_name = format!("kunit_rust_wrapper_{}", test);
+    105 +         let kunit_wrapper_fn_name = format!("kunit_rust_wrapper_{test}");
+
+There is even a case that is a pure removal:
+
+    warning: variables can be used directly in the `format!` string
+      --> rust/macros/module.rs:51:13
+       |
+    51 |             format!("{field}={content}\0", field = field, content = content)
+       |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+       |
+       = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#uninlined_format_args
+    help: change this to
+       |
+    51 -             format!("{field}={content}\0", field = field, content = content)
+    51 +             format!("{field}={content}\0")
+
+The lints all seem like nice cleanups, thus just apply them.
+
+We may want to disable `allow-mixed-uninlined-format-args` in the future.
+
+Cc: stable@vger.kernel.org # Needed in 6.12.y and later (Rust is pinned in older LTSs).
+Link: https://github.com/rust-lang/rust-clippy/pull/14160 [1]
+Acked-by: Benno Lossin <lossin@kernel.org>
+Reviewed-by: Tamir Duberstein <tamird@gmail.com>
+Reviewed-by: Alice Ryhl <aliceryhl@google.com>
+Link: https://lore.kernel.org/r/20250502140237.1659624-6-ojeda@kernel.org
+Signed-off-by: Miguel Ojeda <ojeda@kernel.org>
+---
+ drivers/gpu/nova-core/gpu.rs              |  2 +-
+ rust/kernel/str.rs                        | 46 +++++++++++------------
+ rust/macros/kunit.rs                      | 13 ++-----
+ rust/macros/module.rs                     | 19 +++-------
+ rust/macros/paste.rs                      |  2 +-
+ rust/pin-init/internal/src/pinned_drop.rs |  3 +-
+ 6 files changed, 35 insertions(+), 50 deletions(-)
+
+diff --git a/drivers/gpu/nova-core/gpu.rs b/drivers/gpu/nova-core/gpu.rs
+index 17c9660da450..ab0e5a72a059 100644
+--- a/drivers/gpu/nova-core/gpu.rs
++++ b/drivers/gpu/nova-core/gpu.rs
+@@ -93,7 +93,7 @@ impl Chipset {
+ // For now, redirect to fmt::Debug for convenience.
+ impl fmt::Display for Chipset {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        write!(f, "{:?}", self)
++        write!(f, "{self:?}")
+     }
+ }
+ 
+diff --git a/rust/kernel/str.rs b/rust/kernel/str.rs
+index 878111cb77bc..fb61ce81ea28 100644
+--- a/rust/kernel/str.rs
++++ b/rust/kernel/str.rs
+@@ -73,7 +73,7 @@ impl fmt::Display for BStr {
+                 b'\r' => f.write_str("\\r")?,
+                 // Printable characters.
+                 0x20..=0x7e => f.write_char(b as char)?,
+-                _ => write!(f, "\\x{:02x}", b)?,
++                _ => write!(f, "\\x{b:02x}")?,
+             }
+         }
+         Ok(())
+@@ -109,7 +109,7 @@ impl fmt::Debug for BStr {
+                 b'\\' => f.write_str("\\\\")?,
+                 // Printable characters.
+                 0x20..=0x7e => f.write_char(b as char)?,
+-                _ => write!(f, "\\x{:02x}", b)?,
++                _ => write!(f, "\\x{b:02x}")?,
+             }
+         }
+         f.write_char('"')
+@@ -447,7 +447,7 @@ impl fmt::Display for CStr {
+                 // Printable character.
+                 f.write_char(c as char)?;
+             } else {
+-                write!(f, "\\x{:02x}", c)?;
++                write!(f, "\\x{c:02x}")?;
+             }
+         }
+         Ok(())
+@@ -479,7 +479,7 @@ impl fmt::Debug for CStr {
+                 // Printable characters.
+                 b'\"' => f.write_str("\\\"")?,
+                 0x20..=0x7e => f.write_char(c as char)?,
+-                _ => write!(f, "\\x{:02x}", c)?,
++                _ => write!(f, "\\x{c:02x}")?,
+             }
+         }
+         f.write_str("\"")
+@@ -641,13 +641,13 @@ mod tests {
+     #[test]
+     fn test_cstr_display() {
+         let hello_world = CStr::from_bytes_with_nul(b"hello, world!\0").unwrap();
+-        assert_eq!(format!("{}", hello_world), "hello, world!");
++        assert_eq!(format!("{hello_world}"), "hello, world!");
+         let non_printables = CStr::from_bytes_with_nul(b"\x01\x09\x0a\0").unwrap();
+-        assert_eq!(format!("{}", non_printables), "\\x01\\x09\\x0a");
++        assert_eq!(format!("{non_printables}"), "\\x01\\x09\\x0a");
+         let non_ascii = CStr::from_bytes_with_nul(b"d\xe9j\xe0 vu\0").unwrap();
+-        assert_eq!(format!("{}", non_ascii), "d\\xe9j\\xe0 vu");
++        assert_eq!(format!("{non_ascii}"), "d\\xe9j\\xe0 vu");
+         let good_bytes = CStr::from_bytes_with_nul(b"\xf0\x9f\xa6\x80\0").unwrap();
+-        assert_eq!(format!("{}", good_bytes), "\\xf0\\x9f\\xa6\\x80");
++        assert_eq!(format!("{good_bytes}"), "\\xf0\\x9f\\xa6\\x80");
+     }
+ 
+     #[test]
+@@ -658,47 +658,47 @@ mod tests {
+             bytes[i as usize] = i.wrapping_add(1);
+         }
+         let cstr = CStr::from_bytes_with_nul(&bytes).unwrap();
+-        assert_eq!(format!("{}", cstr), ALL_ASCII_CHARS);
++        assert_eq!(format!("{cstr}"), ALL_ASCII_CHARS);
+     }
+ 
+     #[test]
+     fn test_cstr_debug() {
+         let hello_world = CStr::from_bytes_with_nul(b"hello, world!\0").unwrap();
+-        assert_eq!(format!("{:?}", hello_world), "\"hello, world!\"");
++        assert_eq!(format!("{hello_world:?}"), "\"hello, world!\"");
+         let non_printables = CStr::from_bytes_with_nul(b"\x01\x09\x0a\0").unwrap();
+-        assert_eq!(format!("{:?}", non_printables), "\"\\x01\\x09\\x0a\"");
++        assert_eq!(format!("{non_printables:?}"), "\"\\x01\\x09\\x0a\"");
+         let non_ascii = CStr::from_bytes_with_nul(b"d\xe9j\xe0 vu\0").unwrap();
+-        assert_eq!(format!("{:?}", non_ascii), "\"d\\xe9j\\xe0 vu\"");
++        assert_eq!(format!("{non_ascii:?}"), "\"d\\xe9j\\xe0 vu\"");
+         let good_bytes = CStr::from_bytes_with_nul(b"\xf0\x9f\xa6\x80\0").unwrap();
+-        assert_eq!(format!("{:?}", good_bytes), "\"\\xf0\\x9f\\xa6\\x80\"");
++        assert_eq!(format!("{good_bytes:?}"), "\"\\xf0\\x9f\\xa6\\x80\"");
+     }
+ 
+     #[test]
+     fn test_bstr_display() {
+         let hello_world = BStr::from_bytes(b"hello, world!");
+-        assert_eq!(format!("{}", hello_world), "hello, world!");
++        assert_eq!(format!("{hello_world}"), "hello, world!");
+         let escapes = BStr::from_bytes(b"_\t_\n_\r_\\_\'_\"_");
+-        assert_eq!(format!("{}", escapes), "_\\t_\\n_\\r_\\_'_\"_");
++        assert_eq!(format!("{escapes}"), "_\\t_\\n_\\r_\\_'_\"_");
+         let others = BStr::from_bytes(b"\x01");
+-        assert_eq!(format!("{}", others), "\\x01");
++        assert_eq!(format!("{others}"), "\\x01");
+         let non_ascii = BStr::from_bytes(b"d\xe9j\xe0 vu");
+-        assert_eq!(format!("{}", non_ascii), "d\\xe9j\\xe0 vu");
++        assert_eq!(format!("{non_ascii}"), "d\\xe9j\\xe0 vu");
+         let good_bytes = BStr::from_bytes(b"\xf0\x9f\xa6\x80");
+-        assert_eq!(format!("{}", good_bytes), "\\xf0\\x9f\\xa6\\x80");
++        assert_eq!(format!("{good_bytes}"), "\\xf0\\x9f\\xa6\\x80");
+     }
+ 
+     #[test]
+     fn test_bstr_debug() {
+         let hello_world = BStr::from_bytes(b"hello, world!");
+-        assert_eq!(format!("{:?}", hello_world), "\"hello, world!\"");
++        assert_eq!(format!("{hello_world:?}"), "\"hello, world!\"");
+         let escapes = BStr::from_bytes(b"_\t_\n_\r_\\_\'_\"_");
+-        assert_eq!(format!("{:?}", escapes), "\"_\\t_\\n_\\r_\\\\_'_\\\"_\"");
++        assert_eq!(format!("{escapes:?}"), "\"_\\t_\\n_\\r_\\\\_'_\\\"_\"");
+         let others = BStr::from_bytes(b"\x01");
+-        assert_eq!(format!("{:?}", others), "\"\\x01\"");
++        assert_eq!(format!("{others:?}"), "\"\\x01\"");
+         let non_ascii = BStr::from_bytes(b"d\xe9j\xe0 vu");
+-        assert_eq!(format!("{:?}", non_ascii), "\"d\\xe9j\\xe0 vu\"");
++        assert_eq!(format!("{non_ascii:?}"), "\"d\\xe9j\\xe0 vu\"");
+         let good_bytes = BStr::from_bytes(b"\xf0\x9f\xa6\x80");
+-        assert_eq!(format!("{:?}", good_bytes), "\"\\xf0\\x9f\\xa6\\x80\"");
++        assert_eq!(format!("{good_bytes:?}"), "\"\\xf0\\x9f\\xa6\\x80\"");
+     }
+ }
+ 
+diff --git a/rust/macros/kunit.rs b/rust/macros/kunit.rs
+index 4f553ecf40c0..99ccac82edde 100644
+--- a/rust/macros/kunit.rs
++++ b/rust/macros/kunit.rs
+@@ -15,10 +15,7 @@ pub(crate) fn kunit_tests(attr: TokenStream, ts: TokenStream) -> TokenStream {
+     }
+ 
+     if attr.len() > 255 {
+-        panic!(
+-            "The test suite name `{}` exceeds the maximum length of 255 bytes",
+-            attr
+-        )
++        panic!("The test suite name `{attr}` exceeds the maximum length of 255 bytes")
+     }
+ 
+     let mut tokens: Vec<_> = ts.into_iter().collect();
+@@ -102,16 +99,14 @@ pub(crate) fn kunit_tests(attr: TokenStream, ts: TokenStream) -> TokenStream {
+     let mut kunit_macros = "".to_owned();
+     let mut test_cases = "".to_owned();
+     for test in &tests {
+-        let kunit_wrapper_fn_name = format!("kunit_rust_wrapper_{}", test);
++        let kunit_wrapper_fn_name = format!("kunit_rust_wrapper_{test}");
+         let kunit_wrapper = format!(
+-            "unsafe extern \"C\" fn {}(_test: *mut kernel::bindings::kunit) {{ {}(); }}",
+-            kunit_wrapper_fn_name, test
++            "unsafe extern \"C\" fn {kunit_wrapper_fn_name}(_test: *mut kernel::bindings::kunit) {{ {test}(); }}"
+         );
+         writeln!(kunit_macros, "{kunit_wrapper}").unwrap();
+         writeln!(
+             test_cases,
+-            "    kernel::kunit::kunit_case(kernel::c_str!(\"{}\"), {}),",
+-            test, kunit_wrapper_fn_name
++            "    kernel::kunit::kunit_case(kernel::c_str!(\"{test}\"), {kunit_wrapper_fn_name}),"
+         )
+         .unwrap();
+     }
+diff --git a/rust/macros/module.rs b/rust/macros/module.rs
+index a9418fbc9b44..2f66107847f7 100644
+--- a/rust/macros/module.rs
++++ b/rust/macros/module.rs
+@@ -48,7 +48,7 @@ impl<'a> ModInfoBuilder<'a> {
+             )
+         } else {
+             // Loadable modules' modinfo strings go as-is.
+-            format!("{field}={content}\0", field = field, content = content)
++            format!("{field}={content}\0")
+         };
+ 
+         write!(
+@@ -126,10 +126,7 @@ impl ModuleInfo {
+             };
+ 
+             if seen_keys.contains(&key) {
+-                panic!(
+-                    "Duplicated key \"{}\". Keys can only be specified once.",
+-                    key
+-                );
++                panic!("Duplicated key \"{key}\". Keys can only be specified once.");
+             }
+ 
+             assert_eq!(expect_punct(it), ':');
+@@ -143,10 +140,7 @@ impl ModuleInfo {
+                 "license" => info.license = expect_string_ascii(it),
+                 "alias" => info.alias = Some(expect_string_array(it)),
+                 "firmware" => info.firmware = Some(expect_string_array(it)),
+-                _ => panic!(
+-                    "Unknown key \"{}\". Valid keys are: {:?}.",
+-                    key, EXPECTED_KEYS
+-                ),
++                _ => panic!("Unknown key \"{key}\". Valid keys are: {EXPECTED_KEYS:?}."),
+             }
+ 
+             assert_eq!(expect_punct(it), ',');
+@@ -158,7 +152,7 @@ impl ModuleInfo {
+ 
+         for key in REQUIRED_KEYS {
+             if !seen_keys.iter().any(|e| e == key) {
+-                panic!("Missing required key \"{}\".", key);
++                panic!("Missing required key \"{key}\".");
+             }
+         }
+ 
+@@ -170,10 +164,7 @@ impl ModuleInfo {
+         }
+ 
+         if seen_keys != ordered_keys {
+-            panic!(
+-                "Keys are not ordered as expected. Order them like: {:?}.",
+-                ordered_keys
+-            );
++            panic!("Keys are not ordered as expected. Order them like: {ordered_keys:?}.");
+         }
+ 
+         info
+diff --git a/rust/macros/paste.rs b/rust/macros/paste.rs
+index 6529a387673f..cce712d19855 100644
+--- a/rust/macros/paste.rs
++++ b/rust/macros/paste.rs
+@@ -50,7 +50,7 @@ fn concat_helper(tokens: &[TokenTree]) -> Vec<(String, Span)> {
+                 let tokens = group.stream().into_iter().collect::<Vec<TokenTree>>();
+                 segments.append(&mut concat_helper(tokens.as_slice()));
+             }
+-            token => panic!("unexpected token in paste segments: {:?}", token),
++            token => panic!("unexpected token in paste segments: {token:?}"),
+         };
+     }
+ 
+diff --git a/rust/pin-init/internal/src/pinned_drop.rs b/rust/pin-init/internal/src/pinned_drop.rs
+index c824dd8b436d..c4ca7a70b726 100644
+--- a/rust/pin-init/internal/src/pinned_drop.rs
++++ b/rust/pin-init/internal/src/pinned_drop.rs
+@@ -28,8 +28,7 @@ pub(crate) fn pinned_drop(_args: TokenStream, input: TokenStream) -> TokenStream
+             // Found the end of the generics, this should be `PinnedDrop`.
+             assert!(
+                 matches!(tt, TokenTree::Ident(i) if i.to_string() == "PinnedDrop"),
+-                "expected 'PinnedDrop', found: '{:?}'",
+-                tt
++                "expected 'PinnedDrop', found: '{tt:?}'"
+             );
+             pinned_drop_idx = Some(i);
+             break;
+
+From 5595c31c370957aabe739ac3996aedba8267603f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Pawe=C5=82=20Anikiel?= <panikiel@google.com>
+Date: Thu, 10 Apr 2025 11:54:20 +0000
+Subject: [PATCH 6/6] x86/Kconfig: make CFI_AUTO_DEFAULT depend on !RUST or
+ Rust >= 1.88
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Calling core::fmt::write() from rust code while FineIBT is enabled
+results in a kernel panic:
+
+[ 4614.199779] kernel BUG at arch/x86/kernel/cet.c:132!
+[ 4614.205343] Oops: invalid opcode: 0000 [#1] PREEMPT SMP NOPTI
+[ 4614.211781] CPU: 2 UID: 0 PID: 6057 Comm: dmabuf_dump Tainted: G     U     O       6.12.17-android16-0-g6ab38c534a43 #1 9da040f27673ec3945e23b998a0f8bd64c846599
+[ 4614.227832] Tainted: [U]=USER, [O]=OOT_MODULE
+[ 4614.241247] RIP: 0010:do_kernel_cp_fault+0xea/0xf0
+...
+[ 4614.398144] RIP: 0010:_RNvXs5_NtNtNtCs3o2tGsuHyou_4core3fmt3num3impyNtB9_7Display3fmt+0x0/0x20
+[ 4614.407792] Code: 48 f7 df 48 0f 48 f9 48 89 f2 89 c6 5d e9 18 fd ff ff 0f 1f 84 00 00 00 00 00 f3 0f 1e fa 41 81 ea 14 61 af 2c 74 03 0f 0b 90 <66> 0f 1f 00 55 48 89 e5 48 89 f2 48 8b 3f be 01 00 00 00 5d e9 e7
+[ 4614.428775] RSP: 0018:ffffb95acfa4ba68 EFLAGS: 00010246
+[ 4614.434609] RAX: 0000000000000000 RBX: 0000000000000010 RCX: 0000000000000000
+[ 4614.442587] RDX: 0000000000000007 RSI: ffffb95acfa4ba70 RDI: ffffb95acfa4bc88
+[ 4614.450557] RBP: ffffb95acfa4bae0 R08: ffff0a00ffffff05 R09: 0000000000000070
+[ 4614.458527] R10: 0000000000000000 R11: ffffffffab67eaf0 R12: ffffb95acfa4bcc8
+[ 4614.466493] R13: ffffffffac5d50f0 R14: 0000000000000000 R15: 0000000000000000
+[ 4614.474473]  ? __cfi__RNvXs5_NtNtNtCs3o2tGsuHyou_4core3fmt3num3impyNtB9_7Display3fmt+0x10/0x10
+[ 4614.484118]  ? _RNvNtCs3o2tGsuHyou_4core3fmt5write+0x1d2/0x250
+
+This happens because core::fmt::write() calls
+core::fmt::rt::Argument::fmt(), which currently has CFI disabled:
+
+library/core/src/fmt/rt.rs:
+171     // FIXME: Transmuting formatter in new and indirectly branching to/calling
+172     // it here is an explicit CFI violation.
+173     #[allow(inline_no_sanitize)]
+174     #[no_sanitize(cfi, kcfi)]
+175     #[inline]
+176     pub(super) unsafe fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+
+This causes a Control Protection exception, because FineIBT has sealed
+off the original function's endbr64.
+
+This makes rust currently incompatible with FineIBT. Add a Kconfig
+dependency that prevents FineIBT from getting turned on by default
+if rust is enabled.
+
+[ Rust 1.88.0 (scheduled for 2025-06-26) should have this fixed [1],
+  and thus we relaxed the condition with Rust >= 1.88.
+
+  When `objtool` lands checking for this with e.g. [2], the plan is
+  to ideally run that in upstream Rust's CI to prevent regressions
+  early [3], since we do not control `core`'s source code.
+
+  Alice tested the Rust PR backported to an older compiler.
+
+  Peter would like that Rust provides a stable `core` which can be
+  pulled into the kernel: "Relying on that much out of tree code is
+  'unfortunate'".
+
+    - Miguel ]
+
+Signed-off-by: Paweł Anikiel <panikiel@google.com>
+Reviewed-by: Alice Ryhl <aliceryhl@google.com>
+Acked-by: Peter Zijlstra <peterz@infradead.org>
+Link: https://github.com/rust-lang/rust/pull/139632 [1]
+Link: https://lore.kernel.org/rust-for-linux/20250410154556.GB9003@noisy.programming.kicks-ass.net/ [2]
+Link: https://github.com/rust-lang/rust/pull/139632#issuecomment-2801950873 [3]
+Link: https://lore.kernel.org/r/20250410115420.366349-1-panikiel@google.com
+Link: https://lore.kernel.org/r/att0-CANiq72kjDM0cKALVy4POEzhfdT4nO7tqz0Pm7xM+3=_0+L1t=A@mail.gmail.com
+[ Reduced splat. - Miguel ]
+Signed-off-by: Miguel Ojeda <ojeda@kernel.org>
+---
+ arch/x86/Kconfig | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/arch/x86/Kconfig b/arch/x86/Kconfig
+index 4b9f378e05f6..5873c9e39919 100644
+--- a/arch/x86/Kconfig
++++ b/arch/x86/Kconfig
+@@ -2368,6 +2368,7 @@ config STRICT_SIGALTSTACK_SIZE
+ config CFI_AUTO_DEFAULT
+ 	bool "Attempt to use FineIBT by default at boot time"
+ 	depends on FINEIBT
++	depends on !RUST || RUSTC_VERSION >= 108800
+ 	default y
+ 	help
+ 	  Attempt to use FineIBT by default at boot time. If enabled,

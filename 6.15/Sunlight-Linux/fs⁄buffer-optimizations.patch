@@ -1,0 +1,169 @@
+From fb27226c389f499d04913023fbcfb7920fb0e475 Mon Sep 17 00:00:00 2001
+From: Davidlohr Bueso <dave@stgolabs.net>
+Date: Thu, 15 May 2025 10:39:22 -0700
+Subject: [PATCH 1/4] fs/buffer: use sleeping lookup in __getblk_slowpath()
+
+Just as with the fast path, call the lookup variant depending
+on the gfp flags.
+
+Signed-off-by: Davidlohr Bueso <dave@stgolabs.net>
+Link: https://lore.kernel.org/20250515173925.147823-2-dave@stgolabs.net
+Reviewed-by: Jan Kara <jack@suse.cz>
+Signed-off-by: Christian Brauner <brauner@kernel.org>
+---
+ fs/buffer.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/fs/buffer.c b/fs/buffer.c
+index 7ba1807145aa..8563d949cd2c 100644
+--- a/fs/buffer.c
++++ b/fs/buffer.c
+@@ -1122,6 +1122,8 @@ static struct buffer_head *
+ __getblk_slow(struct block_device *bdev, sector_t block,
+ 	     unsigned size, gfp_t gfp)
+ {
++	bool blocking = gfpflags_allow_blocking(gfp);
++
+ 	/* Size must be multiple of hard sectorsize */
+ 	if (unlikely(size & (bdev_logical_block_size(bdev)-1) ||
+ 			(size < 512 || size > PAGE_SIZE))) {
+@@ -1137,7 +1139,10 @@ __getblk_slow(struct block_device *bdev, sector_t block,
+ 	for (;;) {
+ 		struct buffer_head *bh;
+ 
+-		bh = __find_get_block(bdev, block, size);
++		if (blocking)
++			bh = __find_get_block_nonatomic(bdev, block, size);
++		else
++			bh = __find_get_block(bdev, block, size);
+ 		if (bh)
+ 			return bh;
+ 
+
+From 98a6ca16333e10ce450b0ab516f4c3e5fe52ef31 Mon Sep 17 00:00:00 2001
+From: Davidlohr Bueso <dave@stgolabs.net>
+Date: Thu, 15 May 2025 10:39:23 -0700
+Subject: [PATCH 2/4] fs/buffer: avoid redundant lookup in getblk slowpath
+
+__getblk_slow() already implies failing a first lookup
+as the fastpath, so try to create the buffers immediately
+and avoid the redundant lookup. This saves 5-10% of the
+total cost/latency of the slowpath.
+
+Signed-off-by: Davidlohr Bueso <dave@stgolabs.net>
+Link: https://lore.kernel.org/20250515173925.147823-3-dave@stgolabs.net
+Reviewed-by: Jan Kara <jack@suse.cz>
+Signed-off-by: Christian Brauner <brauner@kernel.org>
+---
+ fs/buffer.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/fs/buffer.c b/fs/buffer.c
+index 8563d949cd2c..23773b750524 100644
+--- a/fs/buffer.c
++++ b/fs/buffer.c
+@@ -1139,15 +1139,15 @@ __getblk_slow(struct block_device *bdev, sector_t block,
+ 	for (;;) {
+ 		struct buffer_head *bh;
+ 
++		if (!grow_buffers(bdev, block, size, gfp))
++			return NULL;
++
+ 		if (blocking)
+ 			bh = __find_get_block_nonatomic(bdev, block, size);
+ 		else
+ 			bh = __find_get_block(bdev, block, size);
+ 		if (bh)
+ 			return bh;
+-
+-		if (!grow_buffers(bdev, block, size, gfp))
+-			return NULL;
+ 	}
+ }
+ 
+
+From d11a24999605a054bef5e2ade7fedfaefce52388 Mon Sep 17 00:00:00 2001
+From: Davidlohr Bueso <dave@stgolabs.net>
+Date: Thu, 15 May 2025 10:39:24 -0700
+Subject: [PATCH 3/4] fs/buffer: remove superfluous statements
+
+Get rid of those unnecessary return statements.
+
+Signed-off-by: Davidlohr Bueso <dave@stgolabs.net>
+Link: https://lore.kernel.org/20250515173925.147823-4-dave@stgolabs.net
+Reviewed-by: Jan Kara <jack@suse.cz>
+Signed-off-by: Christian Brauner <brauner@kernel.org>
+---
+ fs/buffer.c | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/fs/buffer.c b/fs/buffer.c
+index 23773b750524..7621f0c471f7 100644
+--- a/fs/buffer.c
++++ b/fs/buffer.c
+@@ -297,7 +297,6 @@ static void end_buffer_async_read(struct buffer_head *bh, int uptodate)
+ 
+ still_busy:
+ 	spin_unlock_irqrestore(&first->b_uptodate_lock, flags);
+-	return;
+ }
+ 
+ struct postprocess_bh_ctx {
+@@ -422,7 +421,6 @@ static void end_buffer_async_write(struct buffer_head *bh, int uptodate)
+ 
+ still_busy:
+ 	spin_unlock_irqrestore(&first->b_uptodate_lock, flags);
+-	return;
+ }
+ 
+ /*
+@@ -1682,7 +1680,6 @@ void block_invalidate_folio(struct folio *folio, size_t offset, size_t length)
+ 		filemap_release_folio(folio, 0);
+ out:
+ 	folio_clear_mappedtodisk(folio);
+-	return;
+ }
+ EXPORT_SYMBOL(block_invalidate_folio);
+ 
+
+From 8e184bf1cd7495c63242651de6190bb1678730b0 Mon Sep 17 00:00:00 2001
+From: Davidlohr Bueso <dave@stgolabs.net>
+Date: Thu, 15 May 2025 10:39:25 -0700
+Subject: [PATCH 4/4] fs/buffer: optimize discard_buffer()
+
+While invalidating, the clearing of the bits in discard_buffer()
+is done in one fully ordered CAS operation. In the past this was
+done via individual clear_bit(), until e7470ee89f0 (fs: buffer:
+do not use unnecessary atomic operations when discarding buffers).
+This implies that there were never strong ordering requirements
+outside of being serialized by the buffer lock.
+
+As such relax the ordering for archs that can benefit. Further,
+the implied ordering in buffer_unlock() makes current cmpxchg
+implied barrier redundant due to release semantics. And while in
+theory the unlock could be part of the bulk clearing, it is
+best to leave it explicit, but without the double barriers.
+
+Signed-off-by: Davidlohr Bueso <dave@stgolabs.net>
+Link: https://lore.kernel.org/20250515173925.147823-5-dave@stgolabs.net
+Reviewed-by: Jan Kara <jack@suse.cz>
+Signed-off-by: Christian Brauner <brauner@kernel.org>
+---
+ fs/buffer.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/fs/buffer.c b/fs/buffer.c
+index 7621f0c471f7..dd8709e05225 100644
+--- a/fs/buffer.c
++++ b/fs/buffer.c
+@@ -1614,8 +1614,8 @@ static void discard_buffer(struct buffer_head * bh)
+ 	bh->b_bdev = NULL;
+ 	b_state = READ_ONCE(bh->b_state);
+ 	do {
+-	} while (!try_cmpxchg(&bh->b_state, &b_state,
+-			      b_state & ~BUFFER_FLAGS_DISCARD));
++	} while (!try_cmpxchg_relaxed(&bh->b_state, &b_state,
++				      b_state & ~BUFFER_FLAGS_DISCARD));
+ 	unlock_buffer(bh);
+ }
+ 
