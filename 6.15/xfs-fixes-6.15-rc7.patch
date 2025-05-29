@@ -1,0 +1,306 @@
+From 09dab6ce0243bc1939bd1f77a066ccdd72d44efe Mon Sep 17 00:00:00 2001
+From: Wengang Wang <wen.gang.wang@oracle.com>
+Date: Mon, 5 May 2025 16:35:49 -0700
+Subject: xfs: free up mp->m_free[0].count in error case
+
+In xfs_init_percpu_counters(), memory for mp->m_free[0].count wasn't freed
+in error case. Free it up in this patch.
+
+Signed-off-by: Wengang Wang <wen.gang.wang@oracle.com>
+Fixes: 712bae96631852 ("xfs: generalize the freespace and reserved blocks handling")
+Reviewed-by: Darrick J. Wong <djwong@kernel.org>
+Reviewed-by: Christoph Hellwig <hch@lst.de>
+Signed-off-by: Carlos Maiolino <cem@kernel.org>
+---
+ fs/xfs/xfs_super.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/fs/xfs/xfs_super.c b/fs/xfs/xfs_super.c
+index b2dd0c0bf50979..3be041647ec17e 100644
+--- a/fs/xfs/xfs_super.c
++++ b/fs/xfs/xfs_super.c
+@@ -1149,7 +1149,7 @@ xfs_init_percpu_counters(
+ 	return 0;
+ 
+ free_freecounters:
+-	while (--i > 0)
++	while (--i >= 0)
+ 		percpu_counter_destroy(&mp->m_free[i].count);
+ 	percpu_counter_destroy(&mp->m_delalloc_rtextents);
+ free_delalloc:
+-- 
+cgit 1.2.3-korg
+
+
+From fbecd731de05707a73a3d86c6cbe6b9441cdbedc Mon Sep 17 00:00:00 2001
+From: Christoph Hellwig <hch@lst.de>
+Date: Mon, 12 May 2025 16:43:05 +0200
+Subject: xfs: fix zoned GC data corruption due to wrong bv_offset
+
+xfs_zone_gc_write_chunk writes out the data buffer read in earlier using
+the same bio, and currenly looks at bv_offset for the offset into the
+scratch folio for that.  But commit 26064d3e2b4d ("block: fix adding
+folio to bio") changed how bv_page and bv_offset are calculated for
+adding larger folios, breaking this fragile logic.
+
+Switch to extracting the full physical address from the old bio_vec,
+and calculate the offset into the folio from that instead.
+
+This fixes data corruption during garbage collection with heavy rockdsb
+workloads.  Thanks to Hans for tracking down the culprit commit during
+long bisection sessions.
+
+Fixes: 26064d3e2b4d ("block: fix adding folio to bio")
+Fixes: 080d01c41d44 ("xfs: implement zoned garbage collection")
+Reported-by: Hans Holmberg <Hans.Holmberg@wdc.com>
+Signed-off-by: Christoph Hellwig <hch@lst.de>
+Reviewed-by: Hans Holmberg <Hans.Holmberg@wdc.com>
+Tested-by: Hans Holmberg <Hans.Holmberg@wdc.com>
+Reviewed-by: Darrick J. Wong <djwong@kernel.org>
+Signed-off-by: Carlos Maiolino <cem@kernel.org>
+---
+ fs/xfs/xfs_zone_gc.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/fs/xfs/xfs_zone_gc.c b/fs/xfs/xfs_zone_gc.c
+index 81c94dd1d5966b..d613a4094db65c 100644
+--- a/fs/xfs/xfs_zone_gc.c
++++ b/fs/xfs/xfs_zone_gc.c
+@@ -807,7 +807,8 @@ xfs_zone_gc_write_chunk(
+ {
+ 	struct xfs_zone_gc_data	*data = chunk->data;
+ 	struct xfs_mount	*mp = chunk->ip->i_mount;
+-	unsigned int		folio_offset = chunk->bio.bi_io_vec->bv_offset;
++	phys_addr_t		bvec_paddr =
++		bvec_phys(bio_first_bvec_all(&chunk->bio));
+ 	struct xfs_gc_bio	*split_chunk;
+ 
+ 	if (chunk->bio.bi_status)
+@@ -822,7 +823,7 @@ xfs_zone_gc_write_chunk(
+ 
+ 	bio_reset(&chunk->bio, mp->m_rtdev_targp->bt_bdev, REQ_OP_WRITE);
+ 	bio_add_folio_nofail(&chunk->bio, chunk->scratch->folio, chunk->len,
+-			folio_offset);
++			offset_in_folio(chunk->scratch->folio, bvec_paddr));
+ 
+ 	while ((split_chunk = xfs_zone_gc_split_write(data, chunk)))
+ 		xfs_zone_gc_submit_write(data, split_chunk);
+-- 
+cgit 1.2.3-korg
+
+
+From 95b613339c0e5fe651a3ef7605708478bc34a5af Mon Sep 17 00:00:00 2001
+From: "Nirjhar Roy (IBM)" <nirjhar.roy.lists@gmail.com>
+Date: Mon, 12 May 2025 22:00:32 +0530
+Subject: xfs: Fail remount with noattr2 on a v5 with v4 enabled
+
+Bug: When we compile the kernel with CONFIG_XFS_SUPPORT_V4=y,
+remount with "-o remount,noattr2" on a v5 XFS does not
+fail explicitly.
+
+Reproduction:
+mkfs.xfs -f /dev/loop0
+mount /dev/loop0 /mnt/scratch
+mount -o remount,noattr2 /dev/loop0 /mnt/scratch
+
+However, with CONFIG_XFS_SUPPORT_V4=n, the remount
+correctly fails explicitly. This is because the way the
+following 2 functions are defined:
+
+static inline bool xfs_has_attr2 (struct xfs_mount *mp)
+{
+	return !IS_ENABLED(CONFIG_XFS_SUPPORT_V4) ||
+		(mp->m_features & XFS_FEAT_ATTR2);
+}
+static inline bool xfs_has_noattr2 (const struct xfs_mount *mp)
+{
+	return mp->m_features & XFS_FEAT_NOATTR2;
+}
+
+xfs_has_attr2() returns true when CONFIG_XFS_SUPPORT_V4=n
+and hence, the following if condition in
+xfs_fs_validate_params() succeeds and returns -EINVAL:
+
+/*
+ * We have not read the superblock at this point, so only the attr2
+ * mount option can set the attr2 feature by this stage.
+ */
+
+if (xfs_has_attr2(mp) && xfs_has_noattr2(mp)) {
+	xfs_warn(mp, "attr2 and noattr2 cannot both be specified.");
+	return -EINVAL;
+}
+
+With CONFIG_XFS_SUPPORT_V4=y, xfs_has_attr2() always return
+false and hence no error is returned.
+
+Fix: Check if the existing mount has crc enabled(i.e, of
+type v5 and has attr2 enabled) and the
+remount has noattr2, if yes, return -EINVAL.
+
+I have tested xfs/{189,539} in fstests with v4
+and v5 XFS with both CONFIG_XFS_SUPPORT_V4=y/n and
+they both behave as expected.
+
+This patch also fixes remount from noattr2 -> attr2 (on a v4 xfs).
+
+Related discussion in [1]
+
+[1] https://lore.kernel.org/all/Z65o6nWxT00MaUrW@dread.disaster.area/
+
+Signed-off-by: Nirjhar Roy (IBM) <nirjhar.roy.lists@gmail.com>
+Reviewed-by: Christoph Hellwig <hch@lst.de>
+Reviewed-by: Carlos Maiolino <cmaiolino@redhat.com>
+Signed-off-by: Carlos Maiolino <cem@kernel.org>
+---
+ fs/xfs/xfs_super.c | 26 ++++++++++++++++++++++++++
+ 1 file changed, 26 insertions(+)
+
+diff --git a/fs/xfs/xfs_super.c b/fs/xfs/xfs_super.c
+index 3be041647ec17e..4a11ddccc563ad 100644
+--- a/fs/xfs/xfs_super.c
++++ b/fs/xfs/xfs_super.c
+@@ -2114,6 +2114,21 @@ xfs_fs_reconfigure(
+ 	if (error)
+ 		return error;
+ 
++	/* attr2 -> noattr2 */
++	if (xfs_has_noattr2(new_mp)) {
++		if (xfs_has_crc(mp)) {
++			xfs_warn(mp,
++			"attr2 is always enabled for a V5 filesystem - can't be changed.");
++			return -EINVAL;
++		}
++		mp->m_features &= ~XFS_FEAT_ATTR2;
++		mp->m_features |= XFS_FEAT_NOATTR2;
++	} else if (xfs_has_attr2(new_mp)) {
++		/* noattr2 -> attr2 */
++		mp->m_features &= ~XFS_FEAT_NOATTR2;
++		mp->m_features |= XFS_FEAT_ATTR2;
++	}
++
+ 	/* inode32 -> inode64 */
+ 	if (xfs_has_small_inums(mp) && !xfs_has_small_inums(new_mp)) {
+ 		mp->m_features &= ~XFS_FEAT_SMALL_INUMS;
+@@ -2126,6 +2141,17 @@ xfs_fs_reconfigure(
+ 		mp->m_maxagi = xfs_set_inode_alloc(mp, mp->m_sb.sb_agcount);
+ 	}
+ 
++	/*
++	 * Now that mp has been modified according to the remount options, we
++	 * do a final option validation with xfs_finish_flags() just like it is
++	 * just like it is done during mount. We cannot use
++	 * done during mount. We cannot use xfs_finish_flags() on new_mp as it
++	 * contains only the user given options.
++	 */
++	error = xfs_finish_flags(mp);
++	if (error)
++		return error;
++
+ 	/* ro -> rw */
+ 	if (xfs_is_readonly(mp) && !(flags & SB_RDONLY)) {
+ 		error = xfs_remount_rw(mp);
+-- 
+cgit 1.2.3-korg
+
+
+From fa8deae92f473a2ebc0e1c7cfa316f5c083e1880 Mon Sep 17 00:00:00 2001
+From: Carlos Maiolino <cem@kernel.org>
+Date: Mon, 12 May 2025 13:42:55 +0200
+Subject: xfs: Fix a comment on xfs_ail_delete
+
+It doesn't return anything.
+
+Reviewed-by: Christoph Hellwig <hch@lst.de>
+Reviewed-by: Darrick J. Wong <djwong@kernel.org>
+Signed-off-by: Carlos Maiolino <cmaiolino@redhat.com>
+Reviewed-by: Chandan Babu R <chandanbabu@kernel.org>
+Signed-off-by: Carlos Maiolino <cem@kernel.org>
+---
+ fs/xfs/xfs_trans_ail.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/fs/xfs/xfs_trans_ail.c b/fs/xfs/xfs_trans_ail.c
+index 85a649fec6acf6..7d327a3e5a736a 100644
+--- a/fs/xfs/xfs_trans_ail.c
++++ b/fs/xfs/xfs_trans_ail.c
+@@ -315,7 +315,7 @@ xfs_ail_splice(
+ }
+ 
+ /*
+- * Delete the given item from the AIL.  Return a pointer to the item.
++ * Delete the given item from the AIL.
+  */
+ static void
+ xfs_ail_delete(
+-- 
+cgit 1.2.3-korg
+
+
+From 08c73a4b2e3cd2ff9db0ecb3c5c0dd7e23edc770 Mon Sep 17 00:00:00 2001
+From: Carlos Maiolino <cem@kernel.org>
+Date: Mon, 12 May 2025 13:42:56 +0200
+Subject: xfs: Fix comment on xfs_trans_ail_update_bulk()
+
+This function doesn't take the AIL lock, but should be called
+with AIL lock held. Also (hopefuly) simplify the comment.
+
+Signed-off-by: Carlos Maiolino <cmaiolino@redhat.com>
+Reviewed-by: Christoph Hellwig <hch@lst.de>
+Reviewed-by: Chandan Babu R <chandanbabu@kernel.org>
+Signed-off-by: Carlos Maiolino <cem@kernel.org>
+---
+ fs/xfs/xfs_trans_ail.c | 32 +++++++++++++++++---------------
+ 1 file changed, 17 insertions(+), 15 deletions(-)
+
+diff --git a/fs/xfs/xfs_trans_ail.c b/fs/xfs/xfs_trans_ail.c
+index 7d327a3e5a736a..67c328d23e4ae9 100644
+--- a/fs/xfs/xfs_trans_ail.c
++++ b/fs/xfs/xfs_trans_ail.c
+@@ -777,26 +777,28 @@ xfs_ail_update_finish(
+ }
+ 
+ /*
+- * xfs_trans_ail_update - bulk AIL insertion operation.
++ * xfs_trans_ail_update_bulk - bulk AIL insertion operation.
+  *
+- * @xfs_trans_ail_update takes an array of log items that all need to be
++ * @xfs_trans_ail_update_bulk takes an array of log items that all need to be
+  * positioned at the same LSN in the AIL. If an item is not in the AIL, it will
+- * be added.  Otherwise, it will be repositioned  by removing it and re-adding
+- * it to the AIL. If we move the first item in the AIL, update the log tail to
+- * match the new minimum LSN in the AIL.
++ * be added. Otherwise, it will be repositioned by removing it and re-adding
++ * it to the AIL.
+  *
+- * This function takes the AIL lock once to execute the update operations on
+- * all the items in the array, and as such should not be called with the AIL
+- * lock held. As a result, once we have the AIL lock, we need to check each log
+- * item LSN to confirm it needs to be moved forward in the AIL.
++ * If we move the first item in the AIL, update the log tail to match the new
++ * minimum LSN in the AIL.
+  *
+- * To optimise the insert operation, we delete all the items from the AIL in
+- * the first pass, moving them into a temporary list, then splice the temporary
+- * list into the correct position in the AIL. This avoids needing to do an
+- * insert operation on every item.
++ * This function should be called with the AIL lock held.
+  *
+- * This function must be called with the AIL lock held.  The lock is dropped
+- * before returning.
++ * To optimise the insert operation, we add all items to a temporary list, then
++ * splice this list into the correct position in the AIL.
++ *
++ * Items that are already in the AIL are first deleted from their current
++ * location before being added to the temporary list.
++ *
++ * This avoids needing to do an insert operation on every item.
++ *
++ * The AIL lock is dropped by xfs_ail_update_finish() before returning to
++ * the caller.
+  */
+ void
+ xfs_trans_ail_update_bulk(
+-- 
+cgit 1.2.3-korg
+

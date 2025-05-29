@@ -1,0 +1,424 @@
+From 37477d9ecabd15323700313724479bea94d0421e Mon Sep 17 00:00:00 2001
+From: Andrea Righi <arighi@nvidia.com>
+Date: Wed, 26 Mar 2025 20:18:49 +0100
+Subject: sched_ext: idle: Fix return code of scx_select_cpu_dfl()
+
+Return -EBUSY when using %SCX_PICK_IDLE_CORE with scx_select_cpu_dfl()
+if a fully idle SMT core cannot be found, instead of falling back to
+@prev_cpu, which is not a fully idle SMT core in this case.
+
+Fixes: c414c2171cd9e ("sched_ext: idle: Honor idle flags in the built-in idle selection policy")
+Signed-off-by: Andrea Righi <arighi@nvidia.com>
+Signed-off-by: Tejun Heo <tj@kernel.org>
+---
+ kernel/sched/ext_idle.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/kernel/sched/ext_idle.c b/kernel/sched/ext_idle.c
+index 52c36a70a3d044..45061b5843806c 100644
+--- a/kernel/sched/ext_idle.c
++++ b/kernel/sched/ext_idle.c
+@@ -544,7 +544,7 @@ s32 scx_select_cpu_dfl(struct task_struct *p, s32 prev_cpu, u64 wake_flags, u64
+ 		 * core.
+ 		 */
+ 		if (flags & SCX_PICK_IDLE_CORE) {
+-			cpu = prev_cpu;
++			cpu = -EBUSY;
+ 			goto out_unlock;
+ 		}
+ 	}
+-- 
+cgit 1.2.3-korg
+
+
+From 883cc35e9fef6ee5cedf535d26d7143172d60225 Mon Sep 17 00:00:00 2001
+From: Tejun Heo <tj@kernel.org>
+Date: Wed, 26 Mar 2025 10:09:47 -1000
+Subject: sched_ext: Remove a meaningless conditional goto in
+ scx_select_cpu_dfl()
+
+scx_select_cpu_dfl() has a meaningless conditional goto at the end. Remove
+it. No functional changes.
+
+Signed-off-by: Tejun Heo <tj@kernel.org>
+Cc: Andrea Righi <arighi@nvidia.com>
+---
+ kernel/sched/ext_idle.c | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/kernel/sched/ext_idle.c b/kernel/sched/ext_idle.c
+index 45061b5843806c..b5f451e616d48c 100644
+--- a/kernel/sched/ext_idle.c
++++ b/kernel/sched/ext_idle.c
+@@ -584,8 +584,6 @@ s32 scx_select_cpu_dfl(struct task_struct *p, s32 prev_cpu, u64 wake_flags, u64
+ 	 * increasing distance.
+ 	 */
+ 	cpu = scx_pick_idle_cpu(p->cpus_ptr, node, flags);
+-	if (cpu >= 0)
+-		goto out_unlock;
+ 
+ out_unlock:
+ 	rcu_read_unlock();
+-- 
+cgit 1.2.3-korg
+
+
+From a8897ed8523d4c9d782e282b18005a3779c92714 Mon Sep 17 00:00:00 2001
+From: Jake Hillion <jake@hillion.co.uk>
+Date: Tue, 25 Mar 2025 22:41:52 +0000
+Subject: sched_ext: create_dsq: Return -EEXIST on duplicate request
+
+create_dsq and therefore the scx_bpf_create_dsq kfunc currently silently
+ignore duplicate entries. As a sched_ext scheduler is creating each DSQ
+for a different purpose this is surprising behaviour.
+
+Replace rhashtable_insert_fast which ignores duplicates with
+rhashtable_lookup_insert_fast that reports duplicates (though doesn't
+return their value). The rest of the code is structured correctly and
+this now returns -EEXIST.
+
+Tested by adding an extra scx_bpf_create_dsq to scx_simple. Previously
+this was ignored, now init fails with a -17 code. Also ran scx_lavd
+which continued to work well.
+
+Signed-off-by: Jake Hillion <jake@hillion.co.uk>
+Acked-by: Andrea Righi <arighi@nvidia.com>
+Fixes: f0e1a0643a59 ("sched_ext: Implement BPF extensible scheduler class")
+Cc: stable@vger.kernel.org # v6.12+
+Signed-off-by: Tejun Heo <tj@kernel.org>
+---
+ kernel/sched/ext.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/kernel/sched/ext.c b/kernel/sched/ext.c
+index 21575d39c37628..b47be2729ece1a 100644
+--- a/kernel/sched/ext.c
++++ b/kernel/sched/ext.c
+@@ -4171,8 +4171,8 @@ static struct scx_dispatch_q *create_dsq(u64 dsq_id, int node)
+ 
+ 	init_dsq(dsq, dsq_id);
+ 
+-	ret = rhashtable_insert_fast(&dsq_hash, &dsq->hash_node,
+-				     dsq_hash_params);
++	ret = rhashtable_lookup_insert_fast(&dsq_hash, &dsq->hash_node,
++					    dsq_hash_params);
+ 	if (ret) {
+ 		kfree(dsq);
+ 		return ERR_PTR(ret);
+-- 
+cgit 1.2.3-korg
+
+
+From f0c6eab5e45c529f449fbc595873719e00de6d79 Mon Sep 17 00:00:00 2001
+From: Andrea Righi <arighi@nvidia.com>
+Date: Tue, 25 Mar 2025 10:32:12 +0100
+Subject: sched_ext: initialize built-in idle state before ops.init()
+
+A BPF scheduler may want to use the built-in idle cpumasks in ops.init()
+before the scheduler is fully initialized, either directly or through a
+BPF timer for example.
+
+However, this would result in an error, since the idle state has not
+been properly initialized yet.
+
+This can be easily verified by modifying scx_simple to call
+scx_bpf_get_idle_cpumask() in ops.init():
+
+$ sudo scx_simple
+
+DEBUG DUMP
+===========================================================================
+
+scx_simple[121] triggered exit kind 1024:
+  runtime error (built-in idle tracking is disabled)
+...
+
+Fix this by properly initializing the idle state before ops.init() is
+called. With this change applied:
+
+$ sudo scx_simple
+local=2 global=0
+local=19 global=11
+local=23 global=11
+...
+
+Fixes: d73249f88743d ("sched_ext: idle: Make idle static keys private")
+Signed-off-by: Andrea Righi <arighi@nvidia.com>
+Reviewed-by: Joel Fernandes <joelagnelf@nvidia.com>
+Signed-off-by: Tejun Heo <tj@kernel.org>
+---
+ kernel/sched/ext.c      | 4 ++--
+ kernel/sched/ext_idle.c | 8 ++++----
+ 2 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/kernel/sched/ext.c b/kernel/sched/ext.c
+index b47be2729ece1a..66bcd40a28ca1d 100644
+--- a/kernel/sched/ext.c
++++ b/kernel/sched/ext.c
+@@ -5361,6 +5361,8 @@ static int scx_ops_enable(struct sched_ext_ops *ops, struct bpf_link *link)
+ 	 */
+ 	cpus_read_lock();
+ 
++	scx_idle_enable(ops);
++
+ 	if (scx_ops.init) {
+ 		ret = SCX_CALL_OP_RET(SCX_KF_UNLOCKED, init);
+ 		if (ret) {
+@@ -5427,8 +5429,6 @@ static int scx_ops_enable(struct sched_ext_ops *ops, struct bpf_link *link)
+ 	if (scx_ops.cpu_acquire || scx_ops.cpu_release)
+ 		static_branch_enable(&scx_ops_cpu_preempt);
+ 
+-	scx_idle_enable(ops);
+-
+ 	/*
+ 	 * Lock out forks, cgroup on/offlining and moves before opening the
+ 	 * floodgate so that they don't wander into the operations prematurely.
+diff --git a/kernel/sched/ext_idle.c b/kernel/sched/ext_idle.c
+index b5f451e616d48c..cb343ca889e025 100644
+--- a/kernel/sched/ext_idle.c
++++ b/kernel/sched/ext_idle.c
+@@ -721,14 +721,14 @@ static void reset_idle_masks(struct sched_ext_ops *ops)
+ void scx_idle_enable(struct sched_ext_ops *ops)
+ {
+ 	if (!ops->update_idle || (ops->flags & SCX_OPS_KEEP_BUILTIN_IDLE))
+-		static_branch_enable(&scx_builtin_idle_enabled);
++		static_branch_enable_cpuslocked(&scx_builtin_idle_enabled);
+ 	else
+-		static_branch_disable(&scx_builtin_idle_enabled);
++		static_branch_disable_cpuslocked(&scx_builtin_idle_enabled);
+ 
+ 	if (ops->flags & SCX_OPS_BUILTIN_IDLE_PER_NODE)
+-		static_branch_enable(&scx_builtin_idle_per_node);
++		static_branch_enable_cpuslocked(&scx_builtin_idle_per_node);
+ 	else
+-		static_branch_disable(&scx_builtin_idle_per_node);
++		static_branch_disable_cpuslocked(&scx_builtin_idle_per_node);
+ 
+ #ifdef CONFIG_SMP
+ 	reset_idle_masks(ops);
+-- 
+cgit 1.2.3-korg
+
+
+From 2bac648dab395be0ad0d55b9c2ae7723e71e233e Mon Sep 17 00:00:00 2001
+From: Tejun Heo <tj@kernel.org>
+Date: Wed, 2 Apr 2025 09:08:33 -1000
+Subject: tools/sched_ext: Sync with scx repo
+
+Synchronize with https://github.com/sched-ext/scx at dc44584874f0 ("kernel:
+Synchronize with kernel tools/sched_ext").
+
+- READ/WRITE_ONCE() is made more proper and READA_ONCE_ARENA() is dropped.
+
+- scale_by_task_weight[_inverse]() helpers added.
+
+- Enum defs expanded to cover more and new enums.
+
+- Don't trigger fatal error when some enums are missing from kernel BTF.
+
+Signed-off-by: Tejun Heo <tj@kernel.org>
+---
+ tools/sched_ext/include/scx/common.bpf.h        | 85 +++++++++++++++++--------
+ tools/sched_ext/include/scx/enum_defs.autogen.h |  3 +
+ tools/sched_ext/include/scx/enums.autogen.bpf.h | 24 +++++++
+ tools/sched_ext/include/scx/enums.autogen.h     |  8 +++
+ tools/sched_ext/include/scx/enums.h             |  3 +-
+ 5 files changed, 94 insertions(+), 29 deletions(-)
+
+diff --git a/tools/sched_ext/include/scx/common.bpf.h b/tools/sched_ext/include/scx/common.bpf.h
+index dc4333d23189fd..8787048c676253 100644
+--- a/tools/sched_ext/include/scx/common.bpf.h
++++ b/tools/sched_ext/include/scx/common.bpf.h
+@@ -586,36 +586,48 @@ static __always_inline void __write_once_size(volatile void *p, void *res, int s
+ 	}
+ }
+ 
+-#define READ_ONCE(x)					\
+-({							\
+-	union { typeof(x) __val; char __c[1]; } __u =	\
+-		{ .__c = { 0 } };			\
+-	__read_once_size(&(x), __u.__c, sizeof(x));	\
+-	__u.__val;					\
+-})
+-
+-#define WRITE_ONCE(x, val)				\
+-({							\
+-	union { typeof(x) __val; char __c[1]; } __u =	\
+-		{ .__val = (val) }; 			\
+-	__write_once_size(&(x), __u.__c, sizeof(x));	\
+-	__u.__val;					\
+-})
+-
+-#define READ_ONCE_ARENA(type, x)				\
+-({								\
+-	union { type __val; char __c[1]; } __u =		\
+-		{ .__c = { 0 } };				\
+-	__read_once_size((void *)&(x), __u.__c, sizeof(x));	\
+-	__u.__val;						\
++/*
++ * __unqual_typeof(x) - Declare an unqualified scalar type, leaving
++ *			non-scalar types unchanged,
++ *
++ * Prefer C11 _Generic for better compile-times and simpler code. Note: 'char'
++ * is not type-compatible with 'signed char', and we define a separate case.
++ *
++ * This is copied verbatim from kernel's include/linux/compiler_types.h, but
++ * with default expression (for pointers) changed from (x) to (typeof(x)0).
++ *
++ * This is because LLVM has a bug where for lvalue (x), it does not get rid of
++ * an extra address_space qualifier, but does in case of rvalue (typeof(x)0).
++ * Hence, for pointers, we need to create an rvalue expression to get the
++ * desired type. See https://github.com/llvm/llvm-project/issues/53400.
++ */
++#define __scalar_type_to_expr_cases(type) \
++	unsigned type : (unsigned type)0, signed type : (signed type)0
++
++#define __unqual_typeof(x)                              \
++	typeof(_Generic((x),                            \
++		char: (char)0,                          \
++		__scalar_type_to_expr_cases(char),      \
++		__scalar_type_to_expr_cases(short),     \
++		__scalar_type_to_expr_cases(int),       \
++		__scalar_type_to_expr_cases(long),      \
++		__scalar_type_to_expr_cases(long long), \
++		default: (typeof(x))0))
++
++#define READ_ONCE(x)								\
++({										\
++	union { __unqual_typeof(x) __val; char __c[1]; } __u =			\
++		{ .__c = { 0 } };						\
++	__read_once_size((__unqual_typeof(x) *)&(x), __u.__c, sizeof(x));	\
++	__u.__val;								\
+ })
+ 
+-#define WRITE_ONCE_ARENA(type, x, val)				\
+-({								\
+-	union { type __val; char __c[1]; } __u =		\
+-		{ .__val = (val) }; 				\
+-	__write_once_size((void *)&(x), __u.__c, sizeof(x));	\
+-	__u.__val;						\
++#define WRITE_ONCE(x, val)							\
++({										\
++	union { __unqual_typeof(x) __val; char __c[1]; } __u =			\
++		{ .__val = (val) }; 						\
++	__write_once_size((__unqual_typeof(x) *)&(x), __u.__c, sizeof(x));	\
++	__u.__val;								\
+ })
+ 
+ /*
+@@ -648,6 +660,23 @@ static inline u32 log2_u64(u64 v)
+                 return log2_u32(v) + 1;
+ }
+ 
++/*
++ * Return a value proportionally scaled to the task's weight.
++ */
++static inline u64 scale_by_task_weight(const struct task_struct *p, u64 value)
++{
++	return (value * p->scx.weight) / 100;
++}
++
++/*
++ * Return a value inversely proportional to the task's weight.
++ */
++static inline u64 scale_by_task_weight_inverse(const struct task_struct *p, u64 value)
++{
++	return value * 100 / p->scx.weight;
++}
++
++
+ #include "compat.bpf.h"
+ #include "enums.bpf.h"
+ 
+diff --git a/tools/sched_ext/include/scx/enum_defs.autogen.h b/tools/sched_ext/include/scx/enum_defs.autogen.h
+index 6e6c45f14fe1f1..c2c33df9292c25 100644
+--- a/tools/sched_ext/include/scx/enum_defs.autogen.h
++++ b/tools/sched_ext/include/scx/enum_defs.autogen.h
+@@ -88,6 +88,8 @@
+ #define HAVE_SCX_OPS_ENQ_LAST
+ #define HAVE_SCX_OPS_ENQ_EXITING
+ #define HAVE_SCX_OPS_SWITCH_PARTIAL
++#define HAVE_SCX_OPS_ENQ_MIGRATION_DISABLED
++#define HAVE_SCX_OPS_ALLOW_QUEUED_WAKEUP
+ #define HAVE_SCX_OPS_HAS_CGROUP_WEIGHT
+ #define HAVE_SCX_OPS_ALL_FLAGS
+ #define HAVE_SCX_OPSS_NONE
+@@ -104,6 +106,7 @@
+ #define HAVE_SCX_RQ_BAL_PENDING
+ #define HAVE_SCX_RQ_BAL_KEEP
+ #define HAVE_SCX_RQ_BYPASSING
++#define HAVE_SCX_RQ_CLK_VALID
+ #define HAVE_SCX_RQ_IN_WAKEUP
+ #define HAVE_SCX_RQ_IN_BALANCE
+ #define HAVE_SCX_TASK_NONE
+diff --git a/tools/sched_ext/include/scx/enums.autogen.bpf.h b/tools/sched_ext/include/scx/enums.autogen.bpf.h
+index 0e941a0d6f8888..2f8002bcc19ade 100644
+--- a/tools/sched_ext/include/scx/enums.autogen.bpf.h
++++ b/tools/sched_ext/include/scx/enums.autogen.bpf.h
+@@ -13,6 +13,30 @@ const volatile u64 __SCX_SLICE_DFL __weak;
+ const volatile u64 __SCX_SLICE_INF __weak;
+ #define SCX_SLICE_INF __SCX_SLICE_INF
+ 
++const volatile u64 __SCX_RQ_ONLINE __weak;
++#define SCX_RQ_ONLINE __SCX_RQ_ONLINE
++
++const volatile u64 __SCX_RQ_CAN_STOP_TICK __weak;
++#define SCX_RQ_CAN_STOP_TICK __SCX_RQ_CAN_STOP_TICK
++
++const volatile u64 __SCX_RQ_BAL_PENDING __weak;
++#define SCX_RQ_BAL_PENDING __SCX_RQ_BAL_PENDING
++
++const volatile u64 __SCX_RQ_BAL_KEEP __weak;
++#define SCX_RQ_BAL_KEEP __SCX_RQ_BAL_KEEP
++
++const volatile u64 __SCX_RQ_BYPASSING __weak;
++#define SCX_RQ_BYPASSING __SCX_RQ_BYPASSING
++
++const volatile u64 __SCX_RQ_CLK_VALID __weak;
++#define SCX_RQ_CLK_VALID __SCX_RQ_CLK_VALID
++
++const volatile u64 __SCX_RQ_IN_WAKEUP __weak;
++#define SCX_RQ_IN_WAKEUP __SCX_RQ_IN_WAKEUP
++
++const volatile u64 __SCX_RQ_IN_BALANCE __weak;
++#define SCX_RQ_IN_BALANCE __SCX_RQ_IN_BALANCE
++
+ const volatile u64 __SCX_DSQ_FLAG_BUILTIN __weak;
+ #define SCX_DSQ_FLAG_BUILTIN __SCX_DSQ_FLAG_BUILTIN
+ 
+diff --git a/tools/sched_ext/include/scx/enums.autogen.h b/tools/sched_ext/include/scx/enums.autogen.h
+index 88137a140e726d..fedec938584be0 100644
+--- a/tools/sched_ext/include/scx/enums.autogen.h
++++ b/tools/sched_ext/include/scx/enums.autogen.h
+@@ -8,6 +8,14 @@
+ 	SCX_ENUM_SET(skel, scx_public_consts, SCX_OPS_NAME_LEN); \
+ 	SCX_ENUM_SET(skel, scx_public_consts, SCX_SLICE_DFL); \
+ 	SCX_ENUM_SET(skel, scx_public_consts, SCX_SLICE_INF); \
++	SCX_ENUM_SET(skel, scx_rq_flags, SCX_RQ_ONLINE); \
++	SCX_ENUM_SET(skel, scx_rq_flags, SCX_RQ_CAN_STOP_TICK); \
++	SCX_ENUM_SET(skel, scx_rq_flags, SCX_RQ_BAL_PENDING); \
++	SCX_ENUM_SET(skel, scx_rq_flags, SCX_RQ_BAL_KEEP); \
++	SCX_ENUM_SET(skel, scx_rq_flags, SCX_RQ_BYPASSING); \
++	SCX_ENUM_SET(skel, scx_rq_flags, SCX_RQ_CLK_VALID); \
++	SCX_ENUM_SET(skel, scx_rq_flags, SCX_RQ_IN_WAKEUP); \
++	SCX_ENUM_SET(skel, scx_rq_flags, SCX_RQ_IN_BALANCE); \
+ 	SCX_ENUM_SET(skel, scx_dsq_id_flags, SCX_DSQ_FLAG_BUILTIN); \
+ 	SCX_ENUM_SET(skel, scx_dsq_id_flags, SCX_DSQ_FLAG_LOCAL_ON); \
+ 	SCX_ENUM_SET(skel, scx_dsq_id_flags, SCX_DSQ_INVALID); \
+diff --git a/tools/sched_ext/include/scx/enums.h b/tools/sched_ext/include/scx/enums.h
+index 34cbebe974b7b7..8e7c91575f0b32 100644
+--- a/tools/sched_ext/include/scx/enums.h
++++ b/tools/sched_ext/include/scx/enums.h
+@@ -14,7 +14,8 @@ static inline void __ENUM_set(u64 *val, char *type, char *name)
+ 	bool res;
+ 
+ 	res = __COMPAT_read_enum(type, name, val);
+-	SCX_BUG_ON(!res, "enum not found(%s)", name);
++	if (!res)
++		*val = 0;
+ }
+ 
+ #define SCX_ENUM_SET(skel, type, name) do {			\
+-- 
+cgit 1.2.3-korg
+
