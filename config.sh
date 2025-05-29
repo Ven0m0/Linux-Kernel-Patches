@@ -107,6 +107,13 @@ scripts/config -d SYNTH_EVENTS
 scripts/config -d USER_EVENTS
 scripts/config -d HIST_TRIGGERS
 
+# Debug https://git.staropensource.de/JeremyStarTM/aur-linux-clear/src/branch/develop/PKGBUILD
+scripts/config -d DEBUG_INFO
+scripts/config -d DEBUG_INFO_BTF
+scripts/config -d DEBUG_INFO_DWARF4
+scripts/config -d PAHOLE_HAS_SPLIT_BTF
+scripts/config -d DEBUG_INFO_BTF_MODULES
+
 ### Disable debug.
 scripts/config -d SLUB_DEBUG
 scripts/config -d SLUB_DEBUG_ON
