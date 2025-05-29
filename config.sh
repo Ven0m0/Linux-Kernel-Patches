@@ -261,7 +261,6 @@ scripts/config -d NFC_S3FWRN5_I2C
 scripts/config -d NFC_S3FWRN82_UART
 scripts/config -d NFC_ST95HF
 
-
 # Device Drivers
 scripts/config -d PCIEAER_INJECT
 scripts/config -d PCIE_ECRC
