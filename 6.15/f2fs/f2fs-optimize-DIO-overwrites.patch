@@ -1,18 +1,9 @@
-From 351bc761338d9be29065c2b99e603bab336792b7 Mon Sep 17 00:00:00 2001
-From: Yohan Joung <jyh429@gmail.com>
 Date: Mon, 17 Mar 2025 22:36:11 +0900
 Subject: f2fs: optimize f2fs DIO overwrites
 
 this is unnecessary when we know we are overwriting already allocated
 blocks and the overhead of starting a transaction can be significant
 especially for multithreaded workloads doing small writes.
-
-Signed-off-by: Yohan Joung <yohan.joung@sk.com>
-Reviewed-by: Chao Yu <chao@kernel.org>
-Signed-off-by: Jaegeuk Kim <jaegeuk@kernel.org>
----
- fs/f2fs/data.c | 8 +++++++-
- 1 file changed, 7 insertions(+), 1 deletion(-)
 
 diff --git a/fs/f2fs/data.c b/fs/f2fs/data.c
 index d872f785a99603..d99ec9370b1d34 100644
@@ -33,6 +24,3 @@ index d872f785a99603..d99ec9370b1d34 100644
  		map.m_may_create = true;
  
  	err = f2fs_map_blocks(inode, &map, F2FS_GET_BLOCK_DIO);
--- 
-cgit 1.2.3-korg
-
