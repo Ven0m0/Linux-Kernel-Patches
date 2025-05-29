@@ -4,7 +4,6 @@
 ### Exit immediately on error.
 set -e
 
-
 cd "$1" || { echo "Directory not found: $1"; exit 1; }
 
 ### Answer unconfigured (NEW) kernel options in the CachyOS config.
