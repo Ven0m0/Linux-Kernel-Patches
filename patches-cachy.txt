@@ -34,7 +34,7 @@ https://raw.githubusercontent.com/GloriousEggroll/Linux-Pollrate-Patch/refs/head
 
 
 https://raw.githubusercontent.com/Ven0m0/Linux-Kernel-Patches/refs/heads/main/6.15/mtune-native.patch
-
+https://raw.githubusercontent.com/Ven0m0/Linux-Kernel-Patches/refs/heads/main/6.15/0210-cachymod-misc.patch
 
 https://raw.githubusercontent.com/marioroy/cachymod/refs/heads/main/linux-cachymod-6.14/0001-linux6.14.y-optimal-base-slice.patch
 https://raw.githubusercontent.com/marioroy/cachymod/refs/heads/main/linux-cachymod-6.14/0001-sched-fair-remove-cachy-mods.patch
