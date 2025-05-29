@@ -1,0 +1,110 @@
+From 355341e4359b2d5edf0ed5e117f7e9e7a0a5dac0 Mon Sep 17 00:00:00 2001
+From: Christoph Hellwig <hch@lst.de>
+Date: Tue, 20 May 2025 15:54:20 +0200
+Subject: [PATCH 1/2] loop: don't require ->write_iter for writable files in
+ loop_configure
+
+Block devices can be opened read-write even if they can't be written to
+for historic reasons.  Remove the check requiring file->f_op->write_iter
+when the block devices was opened in loop_configure. The call to
+loop_check_backing_file just below ensures the ->write_iter is present
+for backing files opened for writing, which is the only check that is
+actually needed.
+
+Fixes: f5c84eff634b ("loop: Add sanity check for read/write_iter")
+Reported-by: Christian Hesse <mail@eworm.de>
+Signed-off-by: Christoph Hellwig <hch@lst.de>
+Link: https://lore.kernel.org/r/20250520135420.1177312-1-hch@lst.de
+Signed-off-by: Jens Axboe <axboe@kernel.dk>
+---
+ drivers/block/loop.c | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/drivers/block/loop.c b/drivers/block/loop.c
+index b8ba7de087539..e2b1f377f5856 100644
+--- a/drivers/block/loop.c
++++ b/drivers/block/loop.c
+@@ -979,9 +979,6 @@ static int loop_configure(struct loop_device *lo, blk_mode_t mode,
+ 	if (!file)
+ 		return -EBADF;
+ 
+-	if ((mode & BLK_OPEN_WRITE) && !file->f_op->write_iter)
+-		return -EINVAL;
+-
+ 	error = loop_check_backing_file(file);
+ 	if (error)
+ 		return error;
+
+From 49b9f86a594a5403641e6e60508788a7310fd293 Mon Sep 17 00:00:00 2001
+From: Nilay Shroff <nilay@linux.ibm.com>
+Date: Wed, 21 May 2025 18:11:23 +0530
+Subject: [PATCH 2/2] nvme: avoid creating multipath sysfs group under
+ namespace path devices
+
+Commit 4dbd2b2ebe4c ("nvme-multipath: Add visibility for round-robin
+io-policy") introduced the creation of the multipath sysfs group under
+the NVMe head gendisk device node. However, it also inadvertently added
+the same sysfs group under each namespace path device which head node
+refers to and that is incorrect.
+
+The multipath sysfs group should only be exposed through the namespace
+head gendisk node. This is sufficient, as the head device already
+provides symbolic links to the individual namespace paths it manages.
+
+This patch fixes the issue by preventing the creation of the multipath
+sysfs group under namespace path devices, ensuring it only appears under
+the head disk node.
+
+Fixes: 4dbd2b2ebe4c ("nvme-multipath: Add visibility for round-robin io-policy")
+Signed-off-by: Nilay Shroff <nilay@linux.ibm.com>
+Signed-off-by: Christoph Hellwig <hch@lst.de>
+---
+ drivers/nvme/host/sysfs.c | 28 ++++++++++++++++++++++++++++
+ 1 file changed, 28 insertions(+)
+
+diff --git a/drivers/nvme/host/sysfs.c b/drivers/nvme/host/sysfs.c
+index 6d31226f7a4f8..a5bc3bb483d50 100644
+--- a/drivers/nvme/host/sysfs.c
++++ b/drivers/nvme/host/sysfs.c
+@@ -306,13 +306,41 @@ static const struct attribute_group nvme_ns_attr_group = {
+ };
+ 
+ #ifdef CONFIG_NVME_MULTIPATH
++/*
++ * NOTE: The dummy attribute does not appear in sysfs. It exists solely to allow
++ * control over the visibility of the multipath sysfs node. Without at least one
++ * attribute defined in nvme_ns_mpath_attrs[], the sysfs implementation does not
++ * invoke the multipath_sysfs_group_visible() method. As a result, we would not
++ * be able to control the visibility of the multipath sysfs node.
++ */
++static struct attribute dummy_attr = {
++	.name = "dummy",
++};
++
+ static struct attribute *nvme_ns_mpath_attrs[] = {
++	&dummy_attr,
+ 	NULL,
+ };
+ 
++static bool multipath_sysfs_group_visible(struct kobject *kobj)
++{
++	struct device *dev = container_of(kobj, struct device, kobj);
++
++	return nvme_disk_is_ns_head(dev_to_disk(dev));
++}
++
++static bool multipath_sysfs_attr_visible(struct kobject *kobj,
++		struct attribute *attr, int n)
++{
++	return false;
++}
++
++DEFINE_SYSFS_GROUP_VISIBLE(multipath_sysfs)
++
+ const struct attribute_group nvme_ns_mpath_attr_group = {
+ 	.name           = "multipath",
+ 	.attrs		= nvme_ns_mpath_attrs,
++	.is_visible     = SYSFS_GROUP_VISIBLE(multipath_sysfs),
+ };
+ #endif
+ 

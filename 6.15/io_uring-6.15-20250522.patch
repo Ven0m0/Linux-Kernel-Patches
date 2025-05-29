@@ -1,0 +1,127 @@
+From f1774d9d4e104639a9122bde3b1fe58a0c0dcde7 Mon Sep 17 00:00:00 2001
+From: Caleb Sander Mateos <csander@purestorage.com>
+Date: Tue, 20 May 2025 13:33:36 -0600
+Subject: [PATCH 1/3] io_uring/cmd: axe duplicate
+ io_uring_cmd_import_fixed_vec() declaration
+
+io_uring_cmd_import_fixed_vec() is declared in both
+include/linux/io_uring/cmd.h and io_uring/uring_cmd.h. The declarations
+are identical (if redundant) for CONFIG_IO_URING=y. But if
+CONFIG_IO_URING=N, include/linux/io_uring/cmd.h declares the function as
+static inline while io_uring/uring_cmd.h declares it as extern. This
+causes linker errors if the declaration in io_uring/uring_cmd.h is used.
+
+Remove the declaration in io_uring/uring_cmd.h to avoid linker errors
+and prevent the declarations getting out of sync.
+
+Signed-off-by: Caleb Sander Mateos <csander@purestorage.com>
+Fixes: ef4902752972 ("io_uring/cmd: introduce io_uring_cmd_import_fixed_vec")
+Link: https://lore.kernel.org/r/20250520193337.1374509-1-csander@purestorage.com
+Signed-off-by: Jens Axboe <axboe@kernel.dk>
+---
+ io_uring/uring_cmd.h | 6 ------
+ 1 file changed, 6 deletions(-)
+
+diff --git a/io_uring/uring_cmd.h b/io_uring/uring_cmd.h
+index b04686b6b5d24..e6a5142c890ea 100644
+--- a/io_uring/uring_cmd.h
++++ b/io_uring/uring_cmd.h
+@@ -17,9 +17,3 @@ bool io_uring_try_cancel_uring_cmd(struct io_ring_ctx *ctx,
+ 				   struct io_uring_task *tctx, bool cancel_all);
+ 
+ void io_cmd_cache_free(const void *entry);
+-
+-int io_uring_cmd_import_fixed_vec(struct io_uring_cmd *ioucmd,
+-				  const struct iovec __user *uvec,
+-				  size_t uvec_segs,
+-				  int ddir, struct iov_iter *iter,
+-				  unsigned issue_flags);
+
+From a7d755ed9ce9738af3db602eb29d32774a180bc7 Mon Sep 17 00:00:00 2001
+From: Pavel Begunkov <asml.silence@gmail.com>
+Date: Sat, 17 May 2025 13:27:37 +0100
+Subject: [PATCH 2/3] io_uring: fix overflow resched cqe reordering
+
+Leaving the CQ critical section in the middle of a overflow flushing
+can cause cqe reordering since the cache cq pointers are reset and any
+new cqe emitters that might get called in between are not going to be
+forced into io_cqe_cache_refill().
+
+Fixes: eac2ca2d682f9 ("io_uring: check if we need to reschedule during overflow flush")
+Signed-off-by: Pavel Begunkov <asml.silence@gmail.com>
+Link: https://lore.kernel.org/r/90ba817f1a458f091f355f407de1c911d2b93bbf.1747483784.git.asml.silence@gmail.com
+Signed-off-by: Jens Axboe <axboe@kernel.dk>
+---
+ io_uring/io_uring.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/io_uring/io_uring.c b/io_uring/io_uring.c
+index 541e65a1eebfd..edda31a15c6e6 100644
+--- a/io_uring/io_uring.c
++++ b/io_uring/io_uring.c
+@@ -636,6 +636,7 @@ static void __io_cqring_overflow_flush(struct io_ring_ctx *ctx, bool dying)
+ 		 * to care for a non-real case.
+ 		 */
+ 		if (need_resched()) {
++			ctx->cqe_sentinel = ctx->cqe_cached;
+ 			io_cq_unlock_post(ctx);
+ 			mutex_unlock(&ctx->uring_lock);
+ 			cond_resched();
+
+From 3a08988123c868dbfdd054541b1090fb891fa49e Mon Sep 17 00:00:00 2001
+From: Jens Axboe <axboe@kernel.dk>
+Date: Wed, 21 May 2025 18:51:49 -0600
+Subject: [PATCH 3/3] io_uring/net: only retry recv bundle for a full transfer
+
+If a shorter than assumed transfer was seen, a partial buffer will have
+been filled. For that case it isn't sane to attempt to fill more into
+the bundle before posting a completion, as that will cause a gap in
+the received data.
+
+Check if the iterator has hit zero and only allow to continue a bundle
+operation if that is the case.
+
+Also ensure that for putting finished buffers, only the current transfer
+is accounted. Otherwise too many buffers may be put for a short transfer.
+
+Link: https://github.com/axboe/liburing/issues/1409
+Cc: stable@vger.kernel.org
+Fixes: 7c71a0af81ba ("io_uring/net: improve recv bundles")
+Signed-off-by: Jens Axboe <axboe@kernel.dk>
+---
+ io_uring/net.c | 14 ++++++++++----
+ 1 file changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/io_uring/net.c b/io_uring/net.c
+index 24040bc3916a1..27f37fa2ef793 100644
+--- a/io_uring/net.c
++++ b/io_uring/net.c
+@@ -827,18 +827,24 @@ static inline bool io_recv_finish(struct io_kiocb *req, int *ret,
+ 		cflags |= IORING_CQE_F_SOCK_NONEMPTY;
+ 
+ 	if (sr->flags & IORING_RECVSEND_BUNDLE) {
+-		cflags |= io_put_kbufs(req, *ret, io_bundle_nbufs(kmsg, *ret),
++		size_t this_ret = *ret - sr->done_io;
++
++		cflags |= io_put_kbufs(req, *ret, io_bundle_nbufs(kmsg, this_ret),
+ 				      issue_flags);
+ 		if (sr->retry)
+ 			cflags = req->cqe.flags | (cflags & CQE_F_MASK);
+ 		/* bundle with no more immediate buffers, we're done */
+ 		if (req->flags & REQ_F_BL_EMPTY)
+ 			goto finish;
+-		/* if more is available, retry and append to this one */
+-		if (!sr->retry && kmsg->msg.msg_inq > 0 && *ret > 0) {
++		/*
++		 * If more is available AND it was a full transfer, retry and
++		 * append to this one
++		 */
++		if (!sr->retry && kmsg->msg.msg_inq > 0 && this_ret > 0 &&
++		    !iov_iter_count(&kmsg->msg.msg_iter)) {
+ 			req->cqe.flags = cflags & ~CQE_F_MASK;
+ 			sr->len = kmsg->msg.msg_inq;
+-			sr->done_io += *ret;
++			sr->done_io += this_ret;
+ 			sr->retry = true;
+ 			return false;
+ 		}

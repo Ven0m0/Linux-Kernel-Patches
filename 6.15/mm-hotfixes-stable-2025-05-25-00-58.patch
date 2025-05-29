@@ -1,0 +1,1903 @@
+From e05741fb10c38d70bbd7ec12b23c197b6355d519 Mon Sep 17 00:00:00 2001
+From: Tianyang Zhang <zhangtianyang@loongson.cn>
+Date: Wed, 16 Apr 2025 16:24:05 +0800
+Subject: [PATCH 01/22] mm/page_alloc.c: avoid infinite retries caused by
+ cpuset race
+
+__alloc_pages_slowpath has no change detection for ac->nodemask in the
+part of retry path, while cpuset can modify it in parallel.  For some
+processes that set mempolicy as MPOL_BIND, this results ac->nodemask
+changes, and then the should_reclaim_retry will judge based on the latest
+nodemask and jump to retry, while the get_page_from_freelist only
+traverses the zonelist from ac->preferred_zoneref, which selected by a
+expired nodemask and may cause infinite retries in some cases
+
+cpu 64:
+__alloc_pages_slowpath {
+        /* ..... */
+retry:
+        /* ac->nodemask = 0x1, ac->preferred->zone->nid = 1 */
+        if (alloc_flags & ALLOC_KSWAPD)
+                wake_all_kswapds(order, gfp_mask, ac);
+        /* cpu 1:
+        cpuset_write_resmask
+            update_nodemask
+                update_nodemasks_hier
+                    update_tasks_nodemask
+                        mpol_rebind_task
+                         mpol_rebind_policy
+                          mpol_rebind_nodemask
+		// mempolicy->nodes has been modified,
+		// which ac->nodemask point to
+
+        */
+        /* ac->nodemask = 0x3, ac->preferred->zone->nid = 1 */
+        if (should_reclaim_retry(gfp_mask, order, ac, alloc_flags,
+                                 did_some_progress > 0, &no_progress_loops))
+                goto retry;
+}
+
+Simultaneously starting multiple cpuset01 from LTP can quickly reproduce
+this issue on a multi node server when the maximum memory pressure is
+reached and the swap is enabled
+
+Link: https://lkml.kernel.org/r/20250416082405.20988-1-zhangtianyang@loongson.cn
+Fixes: c33d6c06f60f ("mm, page_alloc: avoid looking up the first zone in a zonelist twice")
+Signed-off-by: Tianyang Zhang <zhangtianyang@loongson.cn>
+Reviewed-by: Suren Baghdasaryan <surenb@google.com>
+Reviewed-by: Vlastimil Babka <vbabka@suse.cz>
+Cc: Michal Hocko <mhocko@suse.com>
+Cc: Brendan Jackman <jackmanb@google.com>
+Cc: Johannes Weiner <hannes@cmpxchg.org>
+Cc: Zi Yan <ziy@nvidia.com>
+Cc: <stable@vger.kernel.org>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ mm/page_alloc.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/mm/page_alloc.c b/mm/page_alloc.c
+index 8258349e49acb..47fa713ccb4d8 100644
+--- a/mm/page_alloc.c
++++ b/mm/page_alloc.c
+@@ -4562,6 +4562,14 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
+ 	}
+ 
+ retry:
++	/*
++	 * Deal with possible cpuset update races or zonelist updates to avoid
++	 * infinite retries.
++	 */
++	if (check_retry_cpuset(cpuset_mems_cookie, ac) ||
++	    check_retry_zonelist(zonelist_iter_cookie))
++		goto restart;
++
+ 	/* Ensure kswapd doesn't accidentally go to sleep as long as we loop */
+ 	if (alloc_flags & ALLOC_KSWAPD)
+ 		wake_all_kswapds(order, gfp_mask, ac);
+
+From 910224c7830d252697dc7fbd57fd1059d266d370 Mon Sep 17 00:00:00 2001
+From: "Uladzislau Rezki (Sony)" <urezki@gmail.com>
+Date: Wed, 7 May 2025 17:02:57 +0200
+Subject: [PATCH 02/22] MAINTAINERS: add myself as vmalloc co-maintainer
+
+I have been working on the vmalloc code for several years, contributing to
+improvements and fixes.  Add myself as co-maintainer ("M") alongside
+Andrew Morton.
+
+Link: https://lkml.kernel.org/r/20250507150257.61485-1-urezki@gmail.com
+Signed-off-by: Uladzislau Rezki (Sony) <urezki@gmail.com>
+Acked-by: David Hildenbrand <david@redhat.com>
+Acked-by: Lorenzo Stoakes <lorenzo.stoakes@oracle.com>
+Acked-by: Baoquan He <bhe@redhat.com>
+Cc: Christop Hellwig <hch@infradead.org>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ MAINTAINERS | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 88102bb64dfec..27874530502f1 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -25906,7 +25906,7 @@ F:	tools/testing/vsock/
+ 
+ VMALLOC
+ M:	Andrew Morton <akpm@linux-foundation.org>
+-R:	Uladzislau Rezki <urezki@gmail.com>
++M:	Uladzislau Rezki <urezki@gmail.com>
+ L:	linux-mm@kvack.org
+ S:	Maintained
+ W:	http://www.linux-mm.org
+
+From 7190b3c8bd2b0cde483bd440cf91ba1c518b4261 Mon Sep 17 00:00:00 2001
+From: Ignacio Moreno Gonzalez <Ignacio.MorenoGonzalez@kuka.com>
+Date: Wed, 7 May 2025 15:28:06 +0200
+Subject: [PATCH 03/22] mm: mmap: map MAP_STACK to VM_NOHUGEPAGE only if THP is
+ enabled
+
+commit c4608d1bf7c6 ("mm: mmap: map MAP_STACK to VM_NOHUGEPAGE") maps the
+mmap option MAP_STACK to VM_NOHUGEPAGE.  This is also done if
+CONFIG_TRANSPARENT_HUGEPAGE is not defined.  But in that case, the
+VM_NOHUGEPAGE does not make sense.
+
+I discovered this issue when trying to use the tool CRIU to checkpoint and
+restore a container.  Our running kernel is compiled without
+CONFIG_TRANSPARENT_HUGEPAGE.  CRIU parses the output of /proc/<pid>/smaps
+and saves the "nh" flag.  When trying to restore the container, CRIU fails
+to restore the "nh" mappings, since madvise() MADV_NOHUGEPAGE always
+returns an error because CONFIG_TRANSPARENT_HUGEPAGE is not defined.
+
+Link: https://lkml.kernel.org/r/20250507-map-map_stack-to-vm_nohugepage-only-if-thp-is-enabled-v5-1-c6c38cfefd6e@kuka.com
+Fixes: c4608d1bf7c6 ("mm: mmap: map MAP_STACK to VM_NOHUGEPAGE")
+Signed-off-by: Ignacio Moreno Gonzalez <Ignacio.MorenoGonzalez@kuka.com>
+Acked-by: David Hildenbrand <david@redhat.com>
+Reviewed-by: Lorenzo Stoakes <lorenzo.stoakes@oracle.com>
+Reviewed-by: Yang Shi <yang@os.amperecomputing.com>
+Reviewed-by: Liam R. Howlett <Liam.Howlett@oracle.com>
+Cc: <stable@vger.kernel.org>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ include/linux/mman.h | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/include/linux/mman.h b/include/linux/mman.h
+index bce214fece16b..f4c6346a8fcd2 100644
+--- a/include/linux/mman.h
++++ b/include/linux/mman.h
+@@ -155,7 +155,9 @@ calc_vm_flag_bits(struct file *file, unsigned long flags)
+ 	return _calc_vm_trans(flags, MAP_GROWSDOWN,  VM_GROWSDOWN ) |
+ 	       _calc_vm_trans(flags, MAP_LOCKED,     VM_LOCKED    ) |
+ 	       _calc_vm_trans(flags, MAP_SYNC,	     VM_SYNC      ) |
++#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+ 	       _calc_vm_trans(flags, MAP_STACK,	     VM_NOHUGEPAGE) |
++#endif
+ 	       arch_calc_vm_flag_bits(file, flags);
+ }
+ 
+
+From 0f518255bde881d2a2605bbc080b438b532b6ab2 Mon Sep 17 00:00:00 2001
+From: Florent Revest <revest@chromium.org>
+Date: Wed, 7 May 2025 15:09:57 +0200
+Subject: [PATCH 04/22] mm: fix VM_UFFD_MINOR == VM_SHADOW_STACK on
+ USERFAULTFD=y && ARM64_GCS=y
+
+On configs with CONFIG_ARM64_GCS=y, VM_SHADOW_STACK is bit 38.  On configs
+with CONFIG_HAVE_ARCH_USERFAULTFD_MINOR=y (selected by CONFIG_ARM64 when
+CONFIG_USERFAULTFD=y), VM_UFFD_MINOR is _also_ bit 38.
+
+This bit being shared by two different VMA flags could lead to all sorts
+of unintended behaviors.  Presumably, a process could maybe call into
+userfaultfd in a way that disables the shadow stack vma flag.  I can't
+think of any attack where this would help (presumably, if an attacker
+tries to disable shadow stacks, they are trying to hijack control flow so
+can't arbitrarily call into userfaultfd yet anyway) but this still feels
+somewhat scary.
+
+Link: https://lkml.kernel.org/r/20250507131000.1204175-2-revest@chromium.org
+Fixes: ae80e1629aea ("mm: Define VM_SHADOW_STACK for arm64 when we support GCS")
+Signed-off-by: Florent Revest <revest@chromium.org>
+Reviewed-by: Mark Brown <broonie@kernel.org>
+Cc: Borislav Betkov <bp@alien8.de>
+Cc: Brendan Jackman <jackmanb@google.com>
+Cc: Catalin Marinas <catalin.marinas@arm.com>
+Cc: Florent Revest <revest@chromium.org>
+Cc: "H. Peter Anvin" <hpa@zytor.com>
+Cc: Ingo Molnar <mingo@redhat.com>
+Cc: Thiago Jung Bauermann <thiago.bauermann@linaro.org>
+Cc: Thomas Gleinxer <tglx@linutronix.de>
+Cc: Will Deacon <will@kernel.org>
+Cc: <stable@vger.kernel.org>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ include/linux/mm.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/include/linux/mm.h b/include/linux/mm.h
+index bf55206935c46..fdda6b16263b3 100644
+--- a/include/linux/mm.h
++++ b/include/linux/mm.h
+@@ -385,7 +385,7 @@ extern unsigned int kobjsize(const void *objp);
+ #endif
+ 
+ #ifdef CONFIG_HAVE_ARCH_USERFAULTFD_MINOR
+-# define VM_UFFD_MINOR_BIT	38
++# define VM_UFFD_MINOR_BIT	41
+ # define VM_UFFD_MINOR		BIT(VM_UFFD_MINOR_BIT)	/* UFFD minor faults */
+ #else /* !CONFIG_HAVE_ARCH_USERFAULTFD_MINOR */
+ # define VM_UFFD_MINOR		VM_NONE
+
+From e27126e0bcc747e59efaccac67166b76ff731670 Mon Sep 17 00:00:00 2001
+From: Lorenzo Stoakes <lorenzo.stoakes@oracle.com>
+Date: Mon, 12 May 2025 15:46:03 +0100
+Subject: [PATCH 05/22] MAINTAINERS: update page allocator section
+
+Make Vlastimil maintainer of this section (with thanks to Vlastimil for
+agreeing to this!) and add page isolation files for which this section
+seem most appropriate.
+
+We may wish to, in future, refactor/rename some of these files to more
+logically fit what is actually being performed, but for the time being
+this seems the most sensible place.
+
+Additionally, fix the alphabetical ordering of files.
+
+Link: https://lkml.kernel.org/r/20250512144603.90379-1-lorenzo.stoakes@oracle.com
+Signed-off-by: Lorenzo Stoakes <lorenzo.stoakes@oracle.com>
+Acked-by: Vlastimil Babka <vbabka@suse.cz>
+Acked-by: Johannes Weiner <hannes@cmpxchg.org>
+Acked-by: Zi Yan <ziy@nvidia.com>
+Cc: Brendan Jackman <jackmanb@google.com>
+Cc: David Hildenbrand <david@redhat.com>
+Cc: Michal Hocko <mhocko@suse.com>
+Cc: Suren Baghdasaryan <surenb@google.com>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ MAINTAINERS | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 27874530502f1..89097a5580e8c 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -15566,7 +15566,7 @@ F:	mm/numa_memblks.c
+ 
+ MEMORY MANAGEMENT - PAGE ALLOCATOR
+ M:	Andrew Morton <akpm@linux-foundation.org>
+-R:	Vlastimil Babka <vbabka@suse.cz>
++M:	Vlastimil Babka <vbabka@suse.cz>
+ R:	Suren Baghdasaryan <surenb@google.com>
+ R:	Michal Hocko <mhocko@suse.com>
+ R:	Brendan Jackman <jackmanb@google.com>
+@@ -15574,10 +15574,12 @@ R:	Johannes Weiner <hannes@cmpxchg.org>
+ R:	Zi Yan <ziy@nvidia.com>
+ L:	linux-mm@kvack.org
+ S:	Maintained
++F:	include/linux/compaction.h
++F:	include/linux/gfp.h
++F:	include/linux/page-isolation.h
+ F:	mm/compaction.c
+ F:	mm/page_alloc.c
+-F:	include/linux/gfp.h
+-F:	include/linux/compaction.h
++F:	mm/page_isolation.c
+ 
+ MEMORY MANAGEMENT - RMAP (REVERSE MAPPING)
+ M:	Andrew Morton <akpm@linux-foundation.org>
+
+From 41f36b3912a60804603a23709181f599ec69dc8f Mon Sep 17 00:00:00 2001
+From: Lorenzo Stoakes <lorenzo.stoakes@oracle.com>
+Date: Mon, 12 May 2025 15:31:22 +0100
+Subject: [PATCH 06/22] MAINTAINERS: add mm reclaim section
+
+In furtherance of ongoing efforts to ensure people are aware of who
+de-facto maintains/has an interest in specific parts of mm, as well trying
+to avoid get_maintainers.pl listing only Andrew and the mailing list for
+mm files - establish a reclaim memory management section and add relevant
+maintainers/reviewers.
+
+This is a key part of memory management so sensibly deserves its own
+section.
+
+This encompasses both 'classical' reclaim and MGLRU and thus reflects this
+in the reviewers from both, as well as those who have contributed
+specifically on the memcg side of things.
+
+Link: https://lkml.kernel.org/r/20250512143122.87740-1-lorenzo.stoakes@oracle.com
+Signed-off-by: Lorenzo Stoakes <lorenzo.stoakes@oracle.com>
+Acked-by: Qi Zheng <zhengqi.arch@bytedance.com>
+Acked-by: Michal Hocko <mhocko@suse.com>
+Acked-by: Shakeel Butt <shakeel.butt@linux.dev>
+Acked-by: Johannes Weiner <hannes@cmpxchg.org>
+Acked-by: David Hildenbrand <david@redhat.com>
+Cc: Yu Zhao <yuzhao@google.com>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ MAINTAINERS | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 89097a5580e8c..dc79f285573fb 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -15581,6 +15581,19 @@ F:	mm/compaction.c
+ F:	mm/page_alloc.c
+ F:	mm/page_isolation.c
+ 
++MEMORY MANAGEMENT - RECLAIM
++M:	Andrew Morton <akpm@linux-foundation.org>
++M:	Johannes Weiner <hannes@cmpxchg.org>
++R:	David Hildenbrand <david@redhat.com>
++R:	Michal Hocko <mhocko@kernel.org>
++R:	Qi Zheng <zhengqi.arch@bytedance.com>
++R:	Shakeel Butt <shakeel.butt@linux.dev>
++R:	Lorenzo Stoakes <lorenzo.stoakes@oracle.com>
++L:	linux-mm@kvack.org
++S:	Maintained
++F:	mm/pt_reclaim.c
++F:	mm/vmscan.c
++
+ MEMORY MANAGEMENT - RMAP (REVERSE MAPPING)
+ M:	Andrew Morton <akpm@linux-foundation.org>
+ M:	David Hildenbrand <david@redhat.com>
+
+From 66f28ffb38ccc9d7e5fc8066d4c6aab6434f94a4 Mon Sep 17 00:00:00 2001
+From: Zhang Yi <yi.zhang@huawei.com>
+Date: Mon, 12 May 2025 14:28:25 +0800
+Subject: [PATCH 07/22] mm/truncate: fix out-of-bounds when doing a
+ right-aligned split
+
+When performing a right split on a folio, the split_at2 may point to a
+not-present page if the offset + length equals the original folio size,
+which will trigger the following error:
+
+ BUG: unable to handle page fault for address: ffffea0006000008
+ #PF: supervisor read access in kernel mode
+ #PF: error_code(0x0000) - not-present page
+ PGD 143ffb9067 P4D 143ffb9067 PUD 143ffb8067 PMD 0
+ Oops: Oops: 0000 [#1] SMP PTI
+ CPU: 0 UID: 0 PID: 502640 Comm: fsx Not tainted 6.15.0-rc3-gc6156189fc6b #889 PR
+ Hardware name: QEMU Standard PC (i440FX + PIIX, 1996), BIOS 1.16.3-2.fc40 04/01/4
+ RIP: 0010:truncate_inode_partial_folio+0x208/0x620
+ Code: ff 03 48 01 da e8 78 7e 13 00 48 83 05 10 b5 5a 0c 01 85 c0 0f 85 1c 02 001
+ RSP: 0018:ffffc90005bafab0 EFLAGS: 00010286
+ RAX: 0000000000000000 RBX: ffffea0005ffff00 RCX: 0000000000000002
+ RDX: 000000000000000c RSI: 0000000000013975 RDI: ffffc90005bafa30
+ RBP: ffffea0006000000 R08: 0000000000000000 R09: 00000000000009bf
+ R10: 00000000000007e0 R11: 0000000000000000 R12: 0000000000001633
+ R13: 0000000000000000 R14: ffffea0005ffff00 R15: fffffffffffffffe
+ FS:  00007f9f9a161740(0000) GS:ffff8894971fd000(0000) knlGS:0000000000000000
+ CS:  0010 DS: 0000 ES: 0000 CR0: 0000000080050033
+ CR2: ffffea0006000008 CR3: 000000017c2ae000 CR4: 00000000000006f0
+ DR0: 0000000000000000 DR1: 0000000000000000 DR2: 0000000000000000
+ DR3: 0000000000000000 DR6: 00000000fffe0ff0 DR7: 0000000000000400
+ Call Trace:
+  <TASK>
+  truncate_inode_pages_range+0x226/0x720
+  truncate_pagecache+0x57/0x90
+  ...
+
+Fix this issue by skipping the split if truncation aligns with the folio
+size, make sure the split page number lies within the folio.
+
+Link: https://lkml.kernel.org/r/20250512062825.3533342-1-yi.zhang@huaweicloud.com
+Fixes: 7460b470a131 ("mm/truncate: use folio_split() in truncate operation")
+Signed-off-by: Zhang Yi <yi.zhang@huawei.com>
+Reviewed-by: Zi Yan <ziy@nvidia.com>
+Cc: ErKun Yang <yangerkun@huawei.com>
+Cc: Kefeng Wang <wangkefeng.wang@huawei.com>
+Cc: Matthew Wilcox (Oracle) <willy@infradead.org>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ mm/truncate.c | 20 ++++++++++++--------
+ 1 file changed, 12 insertions(+), 8 deletions(-)
+
+diff --git a/mm/truncate.c b/mm/truncate.c
+index 5d98054094d1f..f2aaf99f29906 100644
+--- a/mm/truncate.c
++++ b/mm/truncate.c
+@@ -191,6 +191,7 @@ int truncate_inode_folio(struct address_space *mapping, struct folio *folio)
+ bool truncate_inode_partial_folio(struct folio *folio, loff_t start, loff_t end)
+ {
+ 	loff_t pos = folio_pos(folio);
++	size_t size = folio_size(folio);
+ 	unsigned int offset, length;
+ 	struct page *split_at, *split_at2;
+ 
+@@ -198,14 +199,13 @@ bool truncate_inode_partial_folio(struct folio *folio, loff_t start, loff_t end)
+ 		offset = start - pos;
+ 	else
+ 		offset = 0;
+-	length = folio_size(folio);
+-	if (pos + length <= (u64)end)
+-		length = length - offset;
++	if (pos + size <= (u64)end)
++		length = size - offset;
+ 	else
+ 		length = end + 1 - pos - offset;
+ 
+ 	folio_wait_writeback(folio);
+-	if (length == folio_size(folio)) {
++	if (length == size) {
+ 		truncate_inode_folio(folio->mapping, folio);
+ 		return true;
+ 	}
+@@ -224,16 +224,20 @@ bool truncate_inode_partial_folio(struct folio *folio, loff_t start, loff_t end)
+ 		return true;
+ 
+ 	split_at = folio_page(folio, PAGE_ALIGN_DOWN(offset) / PAGE_SIZE);
+-	split_at2 = folio_page(folio,
+-			PAGE_ALIGN_DOWN(offset + length) / PAGE_SIZE);
+-
+ 	if (!try_folio_split(folio, split_at, NULL)) {
+ 		/*
+ 		 * try to split at offset + length to make sure folios within
+ 		 * the range can be dropped, especially to avoid memory waste
+ 		 * for shmem truncate
+ 		 */
+-		struct folio *folio2 = page_folio(split_at2);
++		struct folio *folio2;
++
++		if (offset + length == size)
++			goto no_split;
++
++		split_at2 = folio_page(folio,
++				PAGE_ALIGN_DOWN(offset + length) / PAGE_SIZE);
++		folio2 = page_folio(split_at2);
+ 
+ 		if (!folio_try_get(folio2))
+ 			goto no_split;
+
+From 0bf2d838de1ffb6d0bb6f8d18a6ccc59b7d9a705 Mon Sep 17 00:00:00 2001
+From: Wang Yaxin <wang.yaxin@zte.com.cn>
+Date: Sat, 10 May 2025 15:54:13 +0800
+Subject: [PATCH 08/22] taskstats: fix struct taskstats breaks backward
+ compatibility since version 15
+
+Problem
+========
+commit 658eb5ab916d ("delayacct: add delay max to record delay peak")
+  - adding more fields
+commit f65c64f311ee ("delayacct: add delay min to record delay peak")
+  - adding more fields
+commit b016d0873777 ("taskstats: modify taskstats version")
+ - version bump to 15
+
+Since version 15 (TASKSTATS_VERSION=15) the new layout of the structure
+adds fields in the middle of the structure, rendering all old software
+incompatible with newer kernels and software compiled against the new
+kernel headers incompatible with older kernels.
+
+Solution
+=========
+move delay max and delay min to the end of taskstat, and bump
+the version to 16 after the change
+
+[wang.yaxin@zte.com.cn: adjust indentation]
+  Link: https://lkml.kernel.org/r/202505192131489882NSciXV4EGd8zzjLuwoOK@zte.com.cn
+Link: https://lkml.kernel.org/r/20250510155413259V4JNRXxukdDgzsaL0Fo6a@zte.com.cn
+Fixes: f65c64f311ee ("delayacct: add delay min to record delay peak")
+Signed-off-by: Wang Yaxin <wang.yaxin@zte.com.cn>
+Signed-off-by: xu xin <xu.xin16@zte.com.cn>
+Signed-off-by: Kun Jiang <jiang.kun2@zte.com.cn>
+Reviewed-by: Yang Yang <yang.yang29@zte.com.cn>
+Cc: Balbir Singh <bsingharora@gmail.com>
+Cc: <stable@vger.kernel.org>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ include/uapi/linux/taskstats.h | 47 +++++++++++++++++++++-------------
+ 1 file changed, 29 insertions(+), 18 deletions(-)
+
+diff --git a/include/uapi/linux/taskstats.h b/include/uapi/linux/taskstats.h
+index 95762232e0186..5929030d4e8b0 100644
+--- a/include/uapi/linux/taskstats.h
++++ b/include/uapi/linux/taskstats.h
+@@ -34,7 +34,7 @@
+  */
+ 
+ 
+-#define TASKSTATS_VERSION	15
++#define TASKSTATS_VERSION	16
+ #define TS_COMM_LEN		32	/* should be >= TASK_COMM_LEN
+ 					 * in linux/sched.h */
+ 
+@@ -72,8 +72,6 @@ struct taskstats {
+ 	 */
+ 	__u64	cpu_count __attribute__((aligned(8)));
+ 	__u64	cpu_delay_total;
+-	__u64	cpu_delay_max;
+-	__u64	cpu_delay_min;
+ 
+ 	/* Following four fields atomically updated using task->delays->lock */
+ 
+@@ -82,14 +80,10 @@ struct taskstats {
+ 	 */
+ 	__u64	blkio_count;
+ 	__u64	blkio_delay_total;
+-	__u64	blkio_delay_max;
+-	__u64	blkio_delay_min;
+ 
+ 	/* Delay waiting for page fault I/O (swap in only) */
+ 	__u64	swapin_count;
+ 	__u64	swapin_delay_total;
+-	__u64	swapin_delay_max;
+-	__u64	swapin_delay_min;
+ 
+ 	/* cpu "wall-clock" running time
+ 	 * On some architectures, value will adjust for cpu time stolen
+@@ -172,14 +166,11 @@ struct taskstats {
+ 	/* Delay waiting for memory reclaim */
+ 	__u64	freepages_count;
+ 	__u64	freepages_delay_total;
+-	__u64	freepages_delay_max;
+-	__u64	freepages_delay_min;
++
+ 
+ 	/* Delay waiting for thrashing page */
+ 	__u64	thrashing_count;
+ 	__u64	thrashing_delay_total;
+-	__u64	thrashing_delay_max;
+-	__u64	thrashing_delay_min;
+ 
+ 	/* v10: 64-bit btime to avoid overflow */
+ 	__u64	ac_btime64;		/* 64-bit begin time */
+@@ -187,8 +178,6 @@ struct taskstats {
+ 	/* v11: Delay waiting for memory compact */
+ 	__u64	compact_count;
+ 	__u64	compact_delay_total;
+-	__u64	compact_delay_max;
+-	__u64	compact_delay_min;
+ 
+ 	/* v12 begin */
+ 	__u32   ac_tgid;	/* thread group ID */
+@@ -210,15 +199,37 @@ struct taskstats {
+ 	/* v13: Delay waiting for write-protect copy */
+ 	__u64    wpcopy_count;
+ 	__u64    wpcopy_delay_total;
+-	__u64    wpcopy_delay_max;
+-	__u64    wpcopy_delay_min;
+ 
+ 	/* v14: Delay waiting for IRQ/SOFTIRQ */
+ 	__u64    irq_count;
+ 	__u64    irq_delay_total;
+-	__u64    irq_delay_max;
+-	__u64    irq_delay_min;
+-	/* v15: add Delay max */
++
++	/* v15: add Delay max and Delay min */
++
++	/* v16: move Delay max and Delay min to the end of taskstat */
++	__u64	cpu_delay_max;
++	__u64	cpu_delay_min;
++
++	__u64	blkio_delay_max;
++	__u64	blkio_delay_min;
++
++	__u64	swapin_delay_max;
++	__u64	swapin_delay_min;
++
++	__u64	freepages_delay_max;
++	__u64	freepages_delay_min;
++
++	__u64	thrashing_delay_max;
++	__u64	thrashing_delay_min;
++
++	__u64	compact_delay_max;
++	__u64	compact_delay_min;
++
++	__u64	wpcopy_delay_max;
++	__u64	wpcopy_delay_min;
++
++	__u64	irq_delay_max;
++	__u64	irq_delay_min;
+ };
+ 
+ 
+
+From 6fa04511f103ce1b4aa30d50b4abe3401b13bee5 Mon Sep 17 00:00:00 2001
+From: Lance Yang <lance.yang@linux.dev>
+Date: Tue, 13 May 2025 13:22:34 +0800
+Subject: [PATCH 09/22] MAINTAINERS: add hung-task detector section
+
+The hung-task detector is missing in MAINTAINERS.  While it's been quiet
+recently, I'm actively working on it and volunteering to review patches.
+Adding this section will make it easier for contributors to know who to
+contact.
+
+Link: https://lkml.kernel.org/r/20250513052234.46463-1-lance.yang@linux.dev
+Signed-off-by: Lance Yang <lance.yang@linux.dev>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ MAINTAINERS | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index dc79f285573fb..bbe92bbf6c1a9 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -11099,6 +11099,14 @@ L:	linuxppc-dev@lists.ozlabs.org
+ S:	Odd Fixes
+ F:	drivers/tty/hvc/
+ 
++HUNG TASK DETECTOR
++M:	Andrew Morton <akpm@linux-foundation.org>
++R:	Lance Yang <lance.yang@linux.dev>
++L:	linux-kernel@vger.kernel.org
++S:	Maintained
++F:	include/linux/hung_task.h
++F:	kernel/hung_task.c
++
+ I2C ACPI SUPPORT
+ M:	Mika Westerberg <westeri@kernel.org>
+ L:	linux-i2c@vger.kernel.org
+
+From 97dfbbd135cb5e4426f37ca53a8fa87eaaa4e376 Mon Sep 17 00:00:00 2001
+From: "Matthew Wilcox (Oracle)" <willy@infradead.org>
+Date: Wed, 14 May 2025 18:06:02 +0100
+Subject: [PATCH 10/22] highmem: add folio_test_partial_kmap()
+
+In commit c749d9b7ebbc ("iov_iter: fix copy_page_from_iter_atomic() if
+KMAP_LOCAL_FORCE_MAP"), Hugh correctly noted that if KMAP_LOCAL_FORCE_MAP
+is enabled, we must limit ourselves to PAGE_SIZE bytes per call to
+kmap_local().  The same problem exists in memcpy_from_folio(),
+memcpy_to_folio(), folio_zero_tail(), folio_fill_tail() and
+memcpy_from_file_folio(), so add folio_test_partial_kmap() to do this more
+succinctly.
+
+Link: https://lkml.kernel.org/r/20250514170607.3000994-2-willy@infradead.org
+Fixes: 00cdf76012ab ("mm: add memcpy_from_file_folio()")
+Signed-off-by: Matthew Wilcox (Oracle) <willy@infradead.org>
+Cc: Al Viro <viro@zeniv.linux.org.uk>
+Cc: Hugh Dickins <hughd@google.com>
+Cc: <stable@vger.kernel.org>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ include/linux/highmem.h    | 10 +++++-----
+ include/linux/page-flags.h |  7 +++++++
+ 2 files changed, 12 insertions(+), 5 deletions(-)
+
+diff --git a/include/linux/highmem.h b/include/linux/highmem.h
+index 5c6bea81a90ec..c698f8415675e 100644
+--- a/include/linux/highmem.h
++++ b/include/linux/highmem.h
+@@ -461,7 +461,7 @@ static inline void memcpy_from_folio(char *to, struct folio *folio,
+ 		const char *from = kmap_local_folio(folio, offset);
+ 		size_t chunk = len;
+ 
+-		if (folio_test_highmem(folio) &&
++		if (folio_test_partial_kmap(folio) &&
+ 		    chunk > PAGE_SIZE - offset_in_page(offset))
+ 			chunk = PAGE_SIZE - offset_in_page(offset);
+ 		memcpy(to, from, chunk);
+@@ -489,7 +489,7 @@ static inline void memcpy_to_folio(struct folio *folio, size_t offset,
+ 		char *to = kmap_local_folio(folio, offset);
+ 		size_t chunk = len;
+ 
+-		if (folio_test_highmem(folio) &&
++		if (folio_test_partial_kmap(folio) &&
+ 		    chunk > PAGE_SIZE - offset_in_page(offset))
+ 			chunk = PAGE_SIZE - offset_in_page(offset);
+ 		memcpy(to, from, chunk);
+@@ -522,7 +522,7 @@ static inline __must_check void *folio_zero_tail(struct folio *folio,
+ {
+ 	size_t len = folio_size(folio) - offset;
+ 
+-	if (folio_test_highmem(folio)) {
++	if (folio_test_partial_kmap(folio)) {
+ 		size_t max = PAGE_SIZE - offset_in_page(offset);
+ 
+ 		while (len > max) {
+@@ -560,7 +560,7 @@ static inline void folio_fill_tail(struct folio *folio, size_t offset,
+ 
+ 	VM_BUG_ON(offset + len > folio_size(folio));
+ 
+-	if (folio_test_highmem(folio)) {
++	if (folio_test_partial_kmap(folio)) {
+ 		size_t max = PAGE_SIZE - offset_in_page(offset);
+ 
+ 		while (len > max) {
+@@ -597,7 +597,7 @@ static inline size_t memcpy_from_file_folio(char *to, struct folio *folio,
+ 	size_t offset = offset_in_folio(folio, pos);
+ 	char *from = kmap_local_folio(folio, offset);
+ 
+-	if (folio_test_highmem(folio)) {
++	if (folio_test_partial_kmap(folio)) {
+ 		offset = offset_in_page(offset);
+ 		len = min_t(size_t, len, PAGE_SIZE - offset);
+ 	} else
+diff --git a/include/linux/page-flags.h b/include/linux/page-flags.h
+index e6a21b62dccee..3b814ce08331e 100644
+--- a/include/linux/page-flags.h
++++ b/include/linux/page-flags.h
+@@ -615,6 +615,13 @@ FOLIO_FLAG(dropbehind, FOLIO_HEAD_PAGE)
+ PAGEFLAG_FALSE(HighMem, highmem)
+ #endif
+ 
++/* Does kmap_local_folio() only allow access to one page of the folio? */
++#ifdef CONFIG_DEBUG_KMAP_LOCAL_FORCE_MAP
++#define folio_test_partial_kmap(f)	true
++#else
++#define folio_test_partial_kmap(f)	folio_test_highmem(f)
++#endif
++
+ #ifdef CONFIG_SWAP
+ static __always_inline bool folio_test_swapcache(const struct folio *folio)
+ {
+
+From b6ea95a34cbd014ab6ade4248107b86b0aaf2d6c Mon Sep 17 00:00:00 2001
+From: Alexander Gordeev <agordeev@linux.ibm.com>
+Date: Thu, 15 May 2025 15:55:38 +0200
+Subject: [PATCH 11/22] kasan: avoid sleepable page allocation from atomic
+ context
+
+apply_to_pte_range() enters the lazy MMU mode and then invokes
+kasan_populate_vmalloc_pte() callback on each page table walk iteration.
+However, the callback can go into sleep when trying to allocate a single
+page, e.g.  if an architecutre disables preemption on lazy MMU mode enter.
+
+On s390 if make arch_enter_lazy_mmu_mode() -> preempt_enable() and
+arch_leave_lazy_mmu_mode() -> preempt_disable(), such crash occurs:
+
+[    0.663336] BUG: sleeping function called from invalid context at ./include/linux/sched/mm.h:321
+[    0.663348] in_atomic(): 1, irqs_disabled(): 0, non_block: 0, pid: 2, name: kthreadd
+[    0.663358] preempt_count: 1, expected: 0
+[    0.663366] RCU nest depth: 0, expected: 0
+[    0.663375] no locks held by kthreadd/2.
+[    0.663383] Preemption disabled at:
+[    0.663386] [<0002f3284cbb4eda>] apply_to_pte_range+0xfa/0x4a0
+[    0.663405] CPU: 0 UID: 0 PID: 2 Comm: kthreadd Not tainted 6.15.0-rc5-gcc-kasan-00043-gd76bb1ebb558-dirty #162 PREEMPT
+[    0.663408] Hardware name: IBM 3931 A01 701 (KVM/Linux)
+[    0.663409] Call Trace:
+[    0.663410]  [<0002f3284c385f58>] dump_stack_lvl+0xe8/0x140
+[    0.663413]  [<0002f3284c507b9e>] __might_resched+0x66e/0x700
+[    0.663415]  [<0002f3284cc4f6c0>] __alloc_frozen_pages_noprof+0x370/0x4b0
+[    0.663419]  [<0002f3284ccc73c0>] alloc_pages_mpol+0x1a0/0x4a0
+[    0.663421]  [<0002f3284ccc8518>] alloc_frozen_pages_noprof+0x88/0xc0
+[    0.663424]  [<0002f3284ccc8572>] alloc_pages_noprof+0x22/0x120
+[    0.663427]  [<0002f3284cc341ac>] get_free_pages_noprof+0x2c/0xc0
+[    0.663429]  [<0002f3284cceba70>] kasan_populate_vmalloc_pte+0x50/0x120
+[    0.663433]  [<0002f3284cbb4ef8>] apply_to_pte_range+0x118/0x4a0
+[    0.663435]  [<0002f3284cbc7c14>] apply_to_pmd_range+0x194/0x3e0
+[    0.663437]  [<0002f3284cbc99be>] __apply_to_page_range+0x2fe/0x7a0
+[    0.663440]  [<0002f3284cbc9e88>] apply_to_page_range+0x28/0x40
+[    0.663442]  [<0002f3284ccebf12>] kasan_populate_vmalloc+0x82/0xa0
+[    0.663445]  [<0002f3284cc1578c>] alloc_vmap_area+0x34c/0xc10
+[    0.663448]  [<0002f3284cc1c2a6>] __get_vm_area_node+0x186/0x2a0
+[    0.663451]  [<0002f3284cc1e696>] __vmalloc_node_range_noprof+0x116/0x310
+[    0.663454]  [<0002f3284cc1d950>] __vmalloc_node_noprof+0xd0/0x110
+[    0.663457]  [<0002f3284c454b88>] alloc_thread_stack_node+0xf8/0x330
+[    0.663460]  [<0002f3284c458d56>] dup_task_struct+0x66/0x4d0
+[    0.663463]  [<0002f3284c45be90>] copy_process+0x280/0x4b90
+[    0.663465]  [<0002f3284c460940>] kernel_clone+0xd0/0x4b0
+[    0.663467]  [<0002f3284c46115e>] kernel_thread+0xbe/0xe0
+[    0.663469]  [<0002f3284c4e440e>] kthreadd+0x50e/0x7f0
+[    0.663472]  [<0002f3284c38c04a>] __ret_from_fork+0x8a/0xf0
+[    0.663475]  [<0002f3284ed57ff2>] ret_from_fork+0xa/0x38
+
+Instead of allocating single pages per-PTE, bulk-allocate the shadow
+memory prior to applying kasan_populate_vmalloc_pte() callback on a page
+range.
+
+Link: https://lkml.kernel.org/r/c61d3560297c93ed044f0b1af085610353a06a58.1747316918.git.agordeev@linux.ibm.com
+Fixes: 3c5c3cfb9ef4 ("kasan: support backing vmalloc space with real shadow memory")
+Signed-off-by: Alexander Gordeev <agordeev@linux.ibm.com>
+Suggested-by: Andrey Ryabinin <ryabinin.a.a@gmail.com>
+Reviewed-by: Harry Yoo <harry.yoo@oracle.com>
+Cc: Daniel Axtens <dja@axtens.net>
+Cc: <stable@vger.kernel.org>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ mm/kasan/shadow.c | 92 +++++++++++++++++++++++++++++++++++++++--------
+ 1 file changed, 78 insertions(+), 14 deletions(-)
+
+diff --git a/mm/kasan/shadow.c b/mm/kasan/shadow.c
+index 88d1c9dcb5072..d2c70cd2afb1d 100644
+--- a/mm/kasan/shadow.c
++++ b/mm/kasan/shadow.c
+@@ -292,33 +292,99 @@ void __init __weak kasan_populate_early_vm_area_shadow(void *start,
+ {
+ }
+ 
++struct vmalloc_populate_data {
++	unsigned long start;
++	struct page **pages;
++};
++
+ static int kasan_populate_vmalloc_pte(pte_t *ptep, unsigned long addr,
+-				      void *unused)
++				      void *_data)
+ {
+-	unsigned long page;
++	struct vmalloc_populate_data *data = _data;
++	struct page *page;
+ 	pte_t pte;
++	int index;
+ 
+ 	if (likely(!pte_none(ptep_get(ptep))))
+ 		return 0;
+ 
+-	page = __get_free_page(GFP_KERNEL);
+-	if (!page)
+-		return -ENOMEM;
+-
+-	__memset((void *)page, KASAN_VMALLOC_INVALID, PAGE_SIZE);
+-	pte = pfn_pte(PFN_DOWN(__pa(page)), PAGE_KERNEL);
++	index = PFN_DOWN(addr - data->start);
++	page = data->pages[index];
++	__memset(page_to_virt(page), KASAN_VMALLOC_INVALID, PAGE_SIZE);
++	pte = pfn_pte(page_to_pfn(page), PAGE_KERNEL);
+ 
+ 	spin_lock(&init_mm.page_table_lock);
+ 	if (likely(pte_none(ptep_get(ptep)))) {
+ 		set_pte_at(&init_mm, addr, ptep, pte);
+-		page = 0;
++		data->pages[index] = NULL;
+ 	}
+ 	spin_unlock(&init_mm.page_table_lock);
+-	if (page)
+-		free_page(page);
++
++	return 0;
++}
++
++static void ___free_pages_bulk(struct page **pages, int nr_pages)
++{
++	int i;
++
++	for (i = 0; i < nr_pages; i++) {
++		if (pages[i]) {
++			__free_pages(pages[i], 0);
++			pages[i] = NULL;
++		}
++	}
++}
++
++static int ___alloc_pages_bulk(struct page **pages, int nr_pages)
++{
++	unsigned long nr_populated, nr_total = nr_pages;
++	struct page **page_array = pages;
++
++	while (nr_pages) {
++		nr_populated = alloc_pages_bulk(GFP_KERNEL, nr_pages, pages);
++		if (!nr_populated) {
++			___free_pages_bulk(page_array, nr_total - nr_pages);
++			return -ENOMEM;
++		}
++		pages += nr_populated;
++		nr_pages -= nr_populated;
++	}
++
+ 	return 0;
+ }
+ 
++static int __kasan_populate_vmalloc(unsigned long start, unsigned long end)
++{
++	unsigned long nr_pages, nr_total = PFN_UP(end - start);
++	struct vmalloc_populate_data data;
++	int ret = 0;
++
++	data.pages = (struct page **)__get_free_page(GFP_KERNEL | __GFP_ZERO);
++	if (!data.pages)
++		return -ENOMEM;
++
++	while (nr_total) {
++		nr_pages = min(nr_total, PAGE_SIZE / sizeof(data.pages[0]));
++		ret = ___alloc_pages_bulk(data.pages, nr_pages);
++		if (ret)
++			break;
++
++		data.start = start;
++		ret = apply_to_page_range(&init_mm, start, nr_pages * PAGE_SIZE,
++					  kasan_populate_vmalloc_pte, &data);
++		___free_pages_bulk(data.pages, nr_pages);
++		if (ret)
++			break;
++
++		start += nr_pages * PAGE_SIZE;
++		nr_total -= nr_pages;
++	}
++
++	free_page((unsigned long)data.pages);
++
++	return ret;
++}
++
+ int kasan_populate_vmalloc(unsigned long addr, unsigned long size)
+ {
+ 	unsigned long shadow_start, shadow_end;
+@@ -348,9 +414,7 @@ int kasan_populate_vmalloc(unsigned long addr, unsigned long size)
+ 	shadow_start = PAGE_ALIGN_DOWN(shadow_start);
+ 	shadow_end = PAGE_ALIGN(shadow_end);
+ 
+-	ret = apply_to_page_range(&init_mm, shadow_start,
+-				  shadow_end - shadow_start,
+-				  kasan_populate_vmalloc_pte, NULL);
++	ret = __kasan_populate_vmalloc(shadow_start, shadow_end);
+ 	if (ret)
+ 		return ret;
+ 
+
+From 62bec60be24e59ac34c6c7a0ffd69f20726cb88e Mon Sep 17 00:00:00 2001
+From: Lorenzo Stoakes <lorenzo.stoakes@oracle.com>
+Date: Thu, 15 May 2025 20:04:04 +0100
+Subject: [PATCH 12/22] MAINTAINERS: add mm ksm section
+
+As part of the ongoing efforts to sub-divide memory management
+maintainership and reviewership, establish a section for Kernel Samepage
+Merging (KSM) and add appropriate maintainers and reviewers.
+
+Link: https://lkml.kernel.org/r/20250515190404.203596-1-lorenzo.stoakes@oracle.com
+Signed-off-by: Lorenzo Stoakes <lorenzo.stoakes@oracle.com>
+Acked-by: David Hildenbrand <david@redhat.com>
+Acked-by: Chengming Zhou <chengming.zhou@linux.dev>
+Acked-by: Xu Xin <xu.xin16@zte.com.cn>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ MAINTAINERS | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index bbe92bbf6c1a9..b3e5db58c6b73 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -15562,6 +15562,21 @@ W:	http://www.linux-mm.org
+ T:	git git://git.kernel.org/pub/scm/linux/kernel/git/akpm/mm
+ F:	mm/gup.c
+ 
++MEMORY MANAGEMENT - KSM (Kernel Samepage Merging)
++M:	Andrew Morton <akpm@linux-foundation.org>
++M:	David Hildenbrand <david@redhat.com>
++R:	Xu Xin <xu.xin16@zte.com.cn>
++R:	Chengming Zhou <chengming.zhou@linux.dev>
++L:	linux-mm@kvack.org
++S:	Maintained
++W:	http://www.linux-mm.org
++T:	git git://git.kernel.org/pub/scm/linux/kernel/git/akpm/mm
++F:	Documentation/admin-guide/mm/ksm.rst
++F:	Documentation/mm/ksm.rst
++F:	include/linux/ksm.h
++F:	include/trace/events/ksm.h
++F:	mm/ksm.c
++
+ MEMORY MANAGEMENT - NUMA MEMBLOCKS AND NUMA EMULATION
+ M:	Andrew Morton <akpm@linux-foundation.org>
+ M:	Mike Rapoport <rppt@kernel.org>
+
+From bdc3f7e9e19661c855964685820e988d2c371d8e Mon Sep 17 00:00:00 2001
+From: Lorenzo Stoakes <lorenzo.stoakes@oracle.com>
+Date: Thu, 15 May 2025 20:13:58 +0100
+Subject: [PATCH 13/22] MAINTAINERS: add mm memory policy section
+
+As part of the ongoing efforts to sub-divide memory management
+maintainership and reviewership, establish a section for memory policy and
+migration and add appropriate maintainers and reviewers.
+
+[lorenzo.stoakes@oracle.com: add Ying as reviewer]
+  Link: https://lkml.kernel.org/r/ed6f0fc2-5608-4eea-b1be-07e3e19be263@lucifer.local
+Link: https://lkml.kernel.org/r/20250515191358.205684-1-lorenzo.stoakes@oracle.com
+Signed-off-by: Lorenzo Stoakes <lorenzo.stoakes@oracle.com>
+Reviewed-by: Rakie Kim <rakie.kim@sk.com>
+Acked-by: Matthew Brost <matthew.brost@intel.com>
+Reviewed-by: Joshua Hahn <joshua.hahnjy@gmail.com>
+Acked-by: David Hildenbrand <david@redhat.com>
+Acked-by: Zi Yan <ziy@nvidia.com>
+Acked-by: Huang Ying <ying.huang@linux.alibaba.com>
+Acked-by: Byungchul Park <byungchul@sk.com>
+Cc: Alistair Popple <apopple@nvidia.com>
+Cc: David Hildenbrand <david@redhat.com>
+Cc: Gregory Price <gourry@gourry.net>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ MAINTAINERS | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index b3e5db58c6b73..698d5fdd51eb0 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -15577,6 +15577,26 @@ F:	include/linux/ksm.h
+ F:	include/trace/events/ksm.h
+ F:	mm/ksm.c
+ 
++MEMORY MANAGEMENT - MEMORY POLICY AND MIGRATION
++M:	Andrew Morton <akpm@linux-foundation.org>
++M:	David Hildenbrand <david@redhat.com>
++R:	Zi Yan <ziy@nvidia.com>
++R:	Matthew Brost <matthew.brost@intel.com>
++R:	Joshua Hahn <joshua.hahnjy@gmail.com>
++R:	Rakie Kim <rakie.kim@sk.com>
++R:	Byungchul Park <byungchul@sk.com>
++R:	Gregory Price <gourry@gourry.net>
++R:	Ying Huang <ying.huang@linux.alibaba.com>
++L:	linux-mm@kvack.org
++S:	Maintained
++W:	http://www.linux-mm.org
++T:	git git://git.kernel.org/pub/scm/linux/kernel/git/akpm/mm
++F:	include/linux/mempolicy.h
++F:	include/linux/migrate.h
++F:	mm/mempolicy.c
++F:	mm/migrate.c
++F:	mm/migrate_device.c
++
+ MEMORY MANAGEMENT - NUMA MEMBLOCKS AND NUMA EMULATION
+ M:	Andrew Morton <akpm@linux-foundation.org>
+ M:	Mike Rapoport <rppt@kernel.org>
+
+From 07c9214c790e66d49cf12c316f648dcd208c4145 Mon Sep 17 00:00:00 2001
+From: "Mike Rapoport (Microsoft)" <rppt@kernel.org>
+Date: Mon, 19 May 2025 20:18:05 +0300
+Subject: [PATCH 14/22] mm/cma: make detection of highmem_start more robust
+
+Pratyush Yadav reports the following crash:
+
+    ------------[ cut here ]------------
+    kernel BUG at arch/x86/mm/physaddr.c:23!
+    ception 0x06 IP 10:ffffffff812ebbf8 error 0 cr2 0xffff88903ffff000
+    CPU: 0 UID: 0 PID: 0 Comm: swapper Not tainted 6.15.0-rc6+ #231 PREEMPT(undef)
+    Hardware name: QEMU Standard PC (i440FX + PIIX, 1996), BIOS Arch Linux 1.16.3-1-1 04/01/2014
+    RIP: 0010:__phys_addr+0x58/0x60
+    Code: 01 48 89 c2 48 d3 ea 48 85 d2 75 05 e9 91 52 cf 00 0f 0b 48 3d ff ff ff 1f 77 0f 48 8b 05 20 54 55 01 48 01 d0 e9 78 52 cf 00 <0f> 0b 90 0f 1f 44 00 00 90 90 90 90 90 90 90 90 90 90 90 90 90 90
+    RSP: 0000:ffffffff82803dd8 EFLAGS: 00010006 ORIG_RAX: 0000000000000000
+    RAX: 000000007fffffff RBX: 00000000ffffffff RCX: 0000000000000000
+    RDX: 000000007fffffff RSI: 0000000280000000 RDI: ffffffffffffffff
+    RBP: ffffffff82803e68 R08: 0000000000000000 R09: 0000000000000000
+    R10: ffffffff83153180 R11: ffffffff82803e48 R12: ffffffff83c9aed0
+    R13: 0000000000000000 R14: 0000001040000000 R15: 0000000000000000
+    FS:  0000000000000000(0000) GS:0000000000000000(0000) knlGS:0000000000000000
+    CS:  0010 DS: 0000 ES: 0000 CR0: 0000000080050033
+    CR2: ffff88903ffff000 CR3: 0000000002838000 CR4: 00000000000000b0
+    Call Trace:
+     <TASK>
+     ? __cma_declare_contiguous_nid+0x6e/0x340
+     ? cma_declare_contiguous_nid+0x33/0x70
+     ? dma_contiguous_reserve_area+0x2f/0x70
+     ? setup_arch+0x6f1/0x870
+     ? start_kernel+0x52/0x4b0
+     ? x86_64_start_reservations+0x29/0x30
+     ? x86_64_start_kernel+0x7c/0x80
+     ? common_startup_64+0x13e/0x141
+
+  The reason is that __cma_declare_contiguous_nid() does:
+
+          highmem_start = __pa(high_memory - 1) + 1;
+
+  If dma_contiguous_reserve_area() (or any other CMA declaration) is
+  called before free_area_init(), high_memory is uninitialized. Without
+  CONFIG_DEBUG_VIRTUAL, it will likely work but use the wrong value for
+  highmem_start.
+
+The issue occurs because commit e120d1bc12da ("arch, mm: set high_memory
+in free_area_init()") moved initialization of high_memory after the call
+to dma_contiguous_reserve() -> __cma_declare_contiguous_nid() on several
+architectures.
+
+In the case CONFIG_HIGHMEM is enabled, some architectures that actually
+support HIGHMEM (arm, powerpc and x86) have initialization of high_memory
+before a possible call to __cma_declare_contiguous_nid() and some
+initialized high_memory late anyway (arc, csky, microblase, mips, sparc,
+xtensa) even before the commit e120d1bc12da so they are fine with using
+uninitialized value of high_memory.
+
+And in the case CONFIG_HIGHMEM is disabled high_memory essentially becomes
+the first address after memory end, so instead of relying on high_memory
+to calculate highmem_start use memblock_end_of_DRAM() and eliminate the
+dependency of CMA area creation on high_memory in majority of
+configurations.
+
+Link: https://lkml.kernel.org/r/20250519171805.1288393-1-rppt@kernel.org
+Fixes: e120d1bc12da ("arch, mm: set high_memory in free_area_init()")
+Signed-off-by: Mike Rapoport (Microsoft) <rppt@kernel.org>
+Reported-by: Pratyush Yadav <ptyadav@amazon.de>
+Tested-by: Pratyush Yadav <ptyadav@amazon.de>
+Tested-by: Alexandre Ghiti <alexghiti@rivosinc.com>
+Reviewed-by: Oscar Salvador <osalvador@suse.de>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ mm/cma.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/mm/cma.c b/mm/cma.c
+index 15632939f20a1..c04be488b0992 100644
+--- a/mm/cma.c
++++ b/mm/cma.c
+@@ -608,7 +608,10 @@ static int __init __cma_declare_contiguous_nid(phys_addr_t *basep,
+ 	 * complain. Find the boundary by adding one to the last valid
+ 	 * address.
+ 	 */
+-	highmem_start = __pa(high_memory - 1) + 1;
++	if (IS_ENABLED(CONFIG_HIGHMEM))
++		highmem_start = __pa(high_memory - 1) + 1;
++	else
++		highmem_start = memblock_end_of_DRAM();
+ 	pr_debug("%s(size %pa, base %pa, limit %pa alignment %pa)\n",
+ 		__func__, &size, &base, &limit, &alignment);
+ 
+
+From 221fcbf77578826fad8f4bfa0530b5b55bf9676a Mon Sep 17 00:00:00 2001
+From: David Wang <00107082@163.com>
+Date: Tue, 20 May 2025 00:38:23 +0800
+Subject: [PATCH 15/22] module: release codetag section when module load fails
+
+When module load fails after memory for codetag section is ready, codetag
+section memory will not be properly released.  This causes memory leak,
+and if next module load happens to get the same module address, codetag
+may pick the uninitialized section when manipulating tags during module
+unload, and leads to "unable to handle page fault" BUG.
+
+Link: https://lkml.kernel.org/r/20250519163823.7540-1-00107082@163.com
+Fixes: 0db6f8d7820a ("alloc_tag: load module tags into separate contiguous memory")
+Closes: https://lore.kernel.org/all/20250516131246.6244-1-00107082@163.com/
+Signed-off-by: David Wang <00107082@163.com>
+Acked-by: Suren Baghdasaryan <surenb@google.com>
+Cc: Petr Pavlu <petr.pavlu@suse.com>
+Cc: <stable@vger.kernel.org>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ kernel/module/main.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/kernel/module/main.c b/kernel/module/main.c
+index a2859dc3eea66..5c6ab20240a6d 100644
+--- a/kernel/module/main.c
++++ b/kernel/module/main.c
+@@ -2829,6 +2829,7 @@ static void module_deallocate(struct module *mod, struct load_info *info)
+ {
+ 	percpu_modfree(mod);
+ 	module_arch_freeing_init(mod);
++	codetag_free_module_sections(mod);
+ 
+ 	free_mod_mem(mod);
+ }
+
+From 12ca42c237756182aad8ab04654c952765cb9061 Mon Sep 17 00:00:00 2001
+From: Suren Baghdasaryan <surenb@google.com>
+Date: Fri, 16 May 2025 17:07:39 -0700
+Subject: [PATCH 16/22] alloc_tag: allocate percpu counters for module tags
+ dynamically
+
+When a module gets unloaded it checks whether any of its tags are still in
+use and if so, we keep the memory containing module's allocation tags
+alive until all tags are unused.  However percpu counters referenced by
+the tags are freed by free_module().  This will lead to UAF if the memory
+allocated by a module is accessed after module was unloaded.
+
+To fix this we allocate percpu counters for module allocation tags
+dynamically and we keep it alive for tags which are still in use after
+module unloading.  This also removes the requirement of a larger
+PERCPU_MODULE_RESERVE when memory allocation profiling is enabled because
+percpu memory for counters does not need to be reserved anymore.
+
+Link: https://lkml.kernel.org/r/20250517000739.5930-1-surenb@google.com
+Fixes: 0db6f8d7820a ("alloc_tag: load module tags into separate contiguous memory")
+Signed-off-by: Suren Baghdasaryan <surenb@google.com>
+Reported-by: David Wang <00107082@163.com>
+Closes: https://lore.kernel.org/all/20250516131246.6244-1-00107082@163.com/
+Tested-by: David Wang <00107082@163.com>
+Cc: Christoph Lameter (Ampere) <cl@gentwo.org>
+Cc: Dennis Zhou <dennis@kernel.org>
+Cc: Kent Overstreet <kent.overstreet@linux.dev>
+Cc: Pasha Tatashin <pasha.tatashin@soleen.com>
+Cc: Tejun Heo <tj@kernel.org>
+Cc: <stable@vger.kernel.org>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ include/linux/alloc_tag.h | 12 ++++++
+ include/linux/codetag.h   |  8 ++--
+ include/linux/percpu.h    |  4 --
+ lib/alloc_tag.c           | 87 +++++++++++++++++++++++++++++++--------
+ lib/codetag.c             |  5 ++-
+ 5 files changed, 88 insertions(+), 28 deletions(-)
+
+diff --git a/include/linux/alloc_tag.h b/include/linux/alloc_tag.h
+index a946e0203e6d6..8f7931eb7d164 100644
+--- a/include/linux/alloc_tag.h
++++ b/include/linux/alloc_tag.h
+@@ -104,6 +104,16 @@ DECLARE_PER_CPU(struct alloc_tag_counters, _shared_alloc_tag);
+ 
+ #else /* ARCH_NEEDS_WEAK_PER_CPU */
+ 
++#ifdef MODULE
++
++#define DEFINE_ALLOC_TAG(_alloc_tag)						\
++	static struct alloc_tag _alloc_tag __used __aligned(8)			\
++	__section(ALLOC_TAG_SECTION_NAME) = {					\
++		.ct = CODE_TAG_INIT,						\
++		.counters = NULL };
++
++#else  /* MODULE */
++
+ #define DEFINE_ALLOC_TAG(_alloc_tag)						\
+ 	static DEFINE_PER_CPU(struct alloc_tag_counters, _alloc_tag_cntr);	\
+ 	static struct alloc_tag _alloc_tag __used __aligned(8)			\
+@@ -111,6 +121,8 @@ DECLARE_PER_CPU(struct alloc_tag_counters, _shared_alloc_tag);
+ 		.ct = CODE_TAG_INIT,						\
+ 		.counters = &_alloc_tag_cntr };
+ 
++#endif /* MODULE */
++
+ #endif /* ARCH_NEEDS_WEAK_PER_CPU */
+ 
+ DECLARE_STATIC_KEY_MAYBE(CONFIG_MEM_ALLOC_PROFILING_ENABLED_BY_DEFAULT,
+diff --git a/include/linux/codetag.h b/include/linux/codetag.h
+index d14dbd26b3708..0ee4c21c6dbc7 100644
+--- a/include/linux/codetag.h
++++ b/include/linux/codetag.h
+@@ -36,10 +36,10 @@ union codetag_ref {
+ struct codetag_type_desc {
+ 	const char *section;
+ 	size_t tag_size;
+-	void (*module_load)(struct codetag_type *cttype,
+-			    struct codetag_module *cmod);
+-	void (*module_unload)(struct codetag_type *cttype,
+-			      struct codetag_module *cmod);
++	void (*module_load)(struct module *mod,
++			    struct codetag *start, struct codetag *end);
++	void (*module_unload)(struct module *mod,
++			      struct codetag *start, struct codetag *end);
+ #ifdef CONFIG_MODULES
+ 	void (*module_replaced)(struct module *mod, struct module *new_mod);
+ 	bool (*needs_section_mem)(struct module *mod, unsigned long size);
+diff --git a/include/linux/percpu.h b/include/linux/percpu.h
+index 52b5ea663b9f0..85bf8dd9f0874 100644
+--- a/include/linux/percpu.h
++++ b/include/linux/percpu.h
+@@ -15,11 +15,7 @@
+ 
+ /* enough to cover all DEFINE_PER_CPUs in modules */
+ #ifdef CONFIG_MODULES
+-#ifdef CONFIG_MEM_ALLOC_PROFILING
+-#define PERCPU_MODULE_RESERVE		(8 << 13)
+-#else
+ #define PERCPU_MODULE_RESERVE		(8 << 10)
+-#endif
+ #else
+ #define PERCPU_MODULE_RESERVE		0
+ #endif
+diff --git a/lib/alloc_tag.c b/lib/alloc_tag.c
+index 25ecc1334b67d..c7f602fa7b23f 100644
+--- a/lib/alloc_tag.c
++++ b/lib/alloc_tag.c
+@@ -350,18 +350,28 @@ static bool needs_section_mem(struct module *mod, unsigned long size)
+ 	return size >= sizeof(struct alloc_tag);
+ }
+ 
+-static struct alloc_tag *find_used_tag(struct alloc_tag *from, struct alloc_tag *to)
++static bool clean_unused_counters(struct alloc_tag *start_tag,
++				  struct alloc_tag *end_tag)
+ {
+-	while (from <= to) {
++	struct alloc_tag *tag;
++	bool ret = true;
++
++	for (tag = start_tag; tag <= end_tag; tag++) {
+ 		struct alloc_tag_counters counter;
+ 
+-		counter = alloc_tag_read(from);
+-		if (counter.bytes)
+-			return from;
+-		from++;
++		if (!tag->counters)
++			continue;
++
++		counter = alloc_tag_read(tag);
++		if (!counter.bytes) {
++			free_percpu(tag->counters);
++			tag->counters = NULL;
++		} else {
++			ret = false;
++		}
+ 	}
+ 
+-	return NULL;
++	return ret;
+ }
+ 
+ /* Called with mod_area_mt locked */
+@@ -371,12 +381,16 @@ static void clean_unused_module_areas_locked(void)
+ 	struct module *val;
+ 
+ 	mas_for_each(&mas, val, module_tags.size) {
++		struct alloc_tag *start_tag;
++		struct alloc_tag *end_tag;
++
+ 		if (val != &unloaded_mod)
+ 			continue;
+ 
+ 		/* Release area if all tags are unused */
+-		if (!find_used_tag((struct alloc_tag *)(module_tags.start_addr + mas.index),
+-				   (struct alloc_tag *)(module_tags.start_addr + mas.last)))
++		start_tag = (struct alloc_tag *)(module_tags.start_addr + mas.index);
++		end_tag = (struct alloc_tag *)(module_tags.start_addr + mas.last);
++		if (clean_unused_counters(start_tag, end_tag))
+ 			mas_erase(&mas);
+ 	}
+ }
+@@ -561,7 +575,8 @@ static void *reserve_module_tags(struct module *mod, unsigned long size,
+ static void release_module_tags(struct module *mod, bool used)
+ {
+ 	MA_STATE(mas, &mod_area_mt, module_tags.size, module_tags.size);
+-	struct alloc_tag *tag;
++	struct alloc_tag *start_tag;
++	struct alloc_tag *end_tag;
+ 	struct module *val;
+ 
+ 	mas_lock(&mas);
+@@ -575,15 +590,22 @@ static void release_module_tags(struct module *mod, bool used)
+ 	if (!used)
+ 		goto release_area;
+ 
+-	/* Find out if the area is used */
+-	tag = find_used_tag((struct alloc_tag *)(module_tags.start_addr + mas.index),
+-			    (struct alloc_tag *)(module_tags.start_addr + mas.last));
+-	if (tag) {
+-		struct alloc_tag_counters counter = alloc_tag_read(tag);
++	start_tag = (struct alloc_tag *)(module_tags.start_addr + mas.index);
++	end_tag = (struct alloc_tag *)(module_tags.start_addr + mas.last);
++	if (!clean_unused_counters(start_tag, end_tag)) {
++		struct alloc_tag *tag;
++
++		for (tag = start_tag; tag <= end_tag; tag++) {
++			struct alloc_tag_counters counter;
++
++			if (!tag->counters)
++				continue;
+ 
+-		pr_info("%s:%u module %s func:%s has %llu allocated at module unload\n",
+-			tag->ct.filename, tag->ct.lineno, tag->ct.modname,
+-			tag->ct.function, counter.bytes);
++			counter = alloc_tag_read(tag);
++			pr_info("%s:%u module %s func:%s has %llu allocated at module unload\n",
++				tag->ct.filename, tag->ct.lineno, tag->ct.modname,
++				tag->ct.function, counter.bytes);
++		}
+ 	} else {
+ 		used = false;
+ 	}
+@@ -596,6 +618,34 @@ static void release_module_tags(struct module *mod, bool used)
+ 	mas_unlock(&mas);
+ }
+ 
++static void load_module(struct module *mod, struct codetag *start, struct codetag *stop)
++{
++	/* Allocate module alloc_tag percpu counters */
++	struct alloc_tag *start_tag;
++	struct alloc_tag *stop_tag;
++	struct alloc_tag *tag;
++
++	if (!mod)
++		return;
++
++	start_tag = ct_to_alloc_tag(start);
++	stop_tag = ct_to_alloc_tag(stop);
++	for (tag = start_tag; tag < stop_tag; tag++) {
++		WARN_ON(tag->counters);
++		tag->counters = alloc_percpu(struct alloc_tag_counters);
++		if (!tag->counters) {
++			while (--tag >= start_tag) {
++				free_percpu(tag->counters);
++				tag->counters = NULL;
++			}
++			shutdown_mem_profiling(true);
++			pr_err("Failed to allocate memory for allocation tag percpu counters in the module %s. Memory allocation profiling is disabled!\n",
++			       mod->name);
++			break;
++		}
++	}
++}
++
+ static void replace_module(struct module *mod, struct module *new_mod)
+ {
+ 	MA_STATE(mas, &mod_area_mt, 0, module_tags.size);
+@@ -757,6 +807,7 @@ static int __init alloc_tag_init(void)
+ 		.needs_section_mem	= needs_section_mem,
+ 		.alloc_section_mem	= reserve_module_tags,
+ 		.free_section_mem	= release_module_tags,
++		.module_load		= load_module,
+ 		.module_replaced	= replace_module,
+ #endif
+ 	};
+diff --git a/lib/codetag.c b/lib/codetag.c
+index 42aadd6c14549..de332e98d6f5b 100644
+--- a/lib/codetag.c
++++ b/lib/codetag.c
+@@ -194,7 +194,7 @@ static int codetag_module_init(struct codetag_type *cttype, struct module *mod)
+ 	if (err >= 0) {
+ 		cttype->count += range_size(cttype, &range);
+ 		if (cttype->desc.module_load)
+-			cttype->desc.module_load(cttype, cmod);
++			cttype->desc.module_load(mod, range.start, range.stop);
+ 	}
+ 	up_write(&cttype->mod_lock);
+ 
+@@ -333,7 +333,8 @@ void codetag_unload_module(struct module *mod)
+ 		}
+ 		if (found) {
+ 			if (cttype->desc.module_unload)
+-				cttype->desc.module_unload(cttype, cmod);
++				cttype->desc.module_unload(cmod->mod,
++					cmod->range.start, cmod->range.stop);
+ 
+ 			cttype->count -= range_size(cttype, &cmod->range);
+ 			idr_remove(&cttype->mod_idr, mod_id);
+
+From f7a35a3c36d1e36059c5654737d9bee3454f01a3 Mon Sep 17 00:00:00 2001
+From: Kees Cook <kees@kernel.org>
+Date: Thu, 15 May 2025 14:42:15 -0700
+Subject: [PATCH 17/22] mm: vmalloc: actually use the in-place vrealloc region
+
+Patch series "mm: vmalloc: Actually use the in-place vrealloc region".
+
+This fixes a performance regression[1] with vrealloc()[1].
+
+
+The refactoring to not build a new vmalloc region only actually worked
+when shrinking.  Actually return the resized area when it grows.  Ugh.
+
+Link: https://lkml.kernel.org/r/20250515214217.619685-1-kees@kernel.org
+Fixes: a0309faf1cb0 ("mm: vmalloc: support more granular vrealloc() sizing")
+Signed-off-by: Kees Cook <kees@kernel.org>
+Reported-by: Shung-Hsi Yu <shung-hsi.yu@suse.com>
+Closes: https://lore.kernel.org/all/20250515-bpf-verifier-slowdown-vwo2meju4cgp2su5ckj@6gi6ssxbnfqg [1]
+Tested-by: Eduard Zingerman <eddyz87@gmail.com>
+Tested-by: Pawan Gupta <pawan.kumar.gupta@linux.intel.com>
+Tested-by: Shung-Hsi Yu <shung-hsi.yu@suse.com>
+Reviewed-by: "Uladzislau Rezki (Sony)" <urezki@gmail.com>
+Reviewed-by: Danilo Krummrich <dakr@kernel.org>
+Cc: "Erhard F." <erhard_f@mailbox.org>
+Cc: <stable@vger.kernel.org>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ mm/vmalloc.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/mm/vmalloc.c b/mm/vmalloc.c
+index 2d7511654831e..74bd00fd734dd 100644
+--- a/mm/vmalloc.c
++++ b/mm/vmalloc.c
+@@ -4111,6 +4111,7 @@ void *vrealloc_noprof(const void *p, size_t size, gfp_t flags)
+ 		if (want_init_on_alloc(flags))
+ 			memset((void *)p + old_size, 0, size - old_size);
+ 		vm->requested_size = size;
++		return (void *)p;
+ 	}
+ 
+ 	/* TODO: Grow the vm_area, i.e. allocate and map additional pages. */
+
+From 70d1eb031a68cbde4eed8099674be21778441c94 Mon Sep 17 00:00:00 2001
+From: Kees Cook <kees@kernel.org>
+Date: Thu, 15 May 2025 14:42:16 -0700
+Subject: [PATCH 18/22] mm: vmalloc: only zero-init on vrealloc shrink
+
+The common case is to grow reallocations, and since init_on_alloc will
+have already zeroed the whole allocation, we only need to zero when
+shrinking the allocation.
+
+Link: https://lkml.kernel.org/r/20250515214217.619685-2-kees@kernel.org
+Fixes: a0309faf1cb0 ("mm: vmalloc: support more granular vrealloc() sizing")
+Signed-off-by: Kees Cook <kees@kernel.org>
+Tested-by: Pawan Gupta <pawan.kumar.gupta@linux.intel.com>
+Cc: Danilo Krummrich <dakr@kernel.org>
+Cc: Eduard Zingerman <eddyz87@gmail.com>
+Cc: "Erhard F." <erhard_f@mailbox.org>
+Cc: Shung-Hsi Yu <shung-hsi.yu@suse.com>
+Cc: "Uladzislau Rezki (Sony)" <urezki@gmail.com>
+Cc: <stable@vger.kernel.org>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ mm/vmalloc.c | 12 +++++++-----
+ 1 file changed, 7 insertions(+), 5 deletions(-)
+
+diff --git a/mm/vmalloc.c b/mm/vmalloc.c
+index 74bd00fd734dd..00cf1b575c896 100644
+--- a/mm/vmalloc.c
++++ b/mm/vmalloc.c
+@@ -4093,8 +4093,8 @@ void *vrealloc_noprof(const void *p, size_t size, gfp_t flags)
+ 	 * would be a good heuristic for when to shrink the vm_area?
+ 	 */
+ 	if (size <= old_size) {
+-		/* Zero out "freed" memory. */
+-		if (want_init_on_free())
++		/* Zero out "freed" memory, potentially for future realloc. */
++		if (want_init_on_free() || want_init_on_alloc(flags))
+ 			memset((void *)p + size, 0, old_size - size);
+ 		vm->requested_size = size;
+ 		kasan_poison_vmalloc(p + size, old_size - size);
+@@ -4107,9 +4107,11 @@ void *vrealloc_noprof(const void *p, size_t size, gfp_t flags)
+ 	if (size <= alloced_size) {
+ 		kasan_unpoison_vmalloc(p + old_size, size - old_size,
+ 				       KASAN_VMALLOC_PROT_NORMAL);
+-		/* Zero out "alloced" memory. */
+-		if (want_init_on_alloc(flags))
+-			memset((void *)p + old_size, 0, size - old_size);
++		/*
++		 * No need to zero memory here, as unused memory will have
++		 * already been zeroed at initial allocation time or during
++		 * realloc shrink time.
++		 */
+ 		vm->requested_size = size;
+ 		return (void *)p;
+ 	}
+
+From 113ed54ad276c352ee5ce109bdcf0df118a43bda Mon Sep 17 00:00:00 2001
+From: Ge Yang <yangge1116@126.com>
+Date: Thu, 22 May 2025 11:22:17 +0800
+Subject: [PATCH 19/22] mm/hugetlb: fix kernel NULL pointer dereference when
+ replacing free hugetlb folios
+
+A kernel crash was observed when replacing free hugetlb folios:
+
+BUG: kernel NULL pointer dereference, address: 0000000000000028
+PGD 0 P4D 0
+Oops: Oops: 0000 [#1] SMP NOPTI
+CPU: 28 UID: 0 PID: 29639 Comm: test_cma.sh Tainted 6.15.0-rc6-zp #41 PREEMPT(voluntary)
+RIP: 0010:alloc_and_dissolve_hugetlb_folio+0x1d/0x1f0
+RSP: 0018:ffffc9000b30fa90 EFLAGS: 00010286
+RAX: 0000000000000000 RBX: 0000000000342cca RCX: ffffea0043000000
+RDX: ffffc9000b30fb08 RSI: ffffea0043000000 RDI: 0000000000000000
+RBP: ffffc9000b30fb20 R08: 0000000000001000 R09: 0000000000000000
+R10: ffff88886f92eb00 R11: 0000000000000000 R12: ffffea0043000000
+R13: 0000000000000000 R14: 00000000010c0200 R15: 0000000000000004
+FS:  00007fcda5f14740(0000) GS:ffff8888ec1d8000(0000) knlGS:0000000000000000
+CS:  0010 DS: 0000 ES: 0000 CR0: 0000000080050033
+CR2: 0000000000000028 CR3: 0000000391402000 CR4: 0000000000350ef0
+Call Trace:
+<TASK>
+ replace_free_hugepage_folios+0xb6/0x100
+ alloc_contig_range_noprof+0x18a/0x590
+ ? srso_return_thunk+0x5/0x5f
+ ? down_read+0x12/0xa0
+ ? srso_return_thunk+0x5/0x5f
+ cma_range_alloc.constprop.0+0x131/0x290
+ __cma_alloc+0xcf/0x2c0
+ cma_alloc_write+0x43/0xb0
+ simple_attr_write_xsigned.constprop.0.isra.0+0xb2/0x110
+ debugfs_attr_write+0x46/0x70
+ full_proxy_write+0x62/0xa0
+ vfs_write+0xf8/0x420
+ ? srso_return_thunk+0x5/0x5f
+ ? filp_flush+0x86/0xa0
+ ? srso_return_thunk+0x5/0x5f
+ ? filp_close+0x1f/0x30
+ ? srso_return_thunk+0x5/0x5f
+ ? do_dup2+0xaf/0x160
+ ? srso_return_thunk+0x5/0x5f
+ ksys_write+0x65/0xe0
+ do_syscall_64+0x64/0x170
+ entry_SYSCALL_64_after_hwframe+0x76/0x7e
+
+There is a potential race between __update_and_free_hugetlb_folio() and
+replace_free_hugepage_folios():
+
+CPU1                              CPU2
+__update_and_free_hugetlb_folio   replace_free_hugepage_folios
+                                    folio_test_hugetlb(folio)
+                                    -- It's still hugetlb folio.
+
+  __folio_clear_hugetlb(folio)
+  hugetlb_free_folio(folio)
+                                    h = folio_hstate(folio)
+                                    -- Here, h is NULL pointer
+
+When the above race condition occurs, folio_hstate(folio) returns NULL,
+and subsequent access to this NULL pointer will cause the system to crash.
+To resolve this issue, execute folio_hstate(folio) under the protection
+of the hugetlb_lock lock, ensuring that folio_hstate(folio) does not
+return NULL.
+
+Link: https://lkml.kernel.org/r/1747884137-26685-1-git-send-email-yangge1116@126.com
+Fixes: 04f13d241b8b ("mm: replace free hugepage folios after migration")
+Signed-off-by: Ge Yang <yangge1116@126.com>
+Reviewed-by: Muchun Song <muchun.song@linux.dev>
+Reviewed-by: Oscar Salvador <osalvador@suse.de>
+Cc: Baolin Wang <baolin.wang@linux.alibaba.com>
+Cc: Barry Song <21cnbao@gmail.com>
+Cc: David Hildenbrand <david@redhat.com>
+Cc: <stable@vger.kernel.org>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ mm/hugetlb.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/mm/hugetlb.c b/mm/hugetlb.c
+index 7ae38bfb9096c..55e6796b24d0a 100644
+--- a/mm/hugetlb.c
++++ b/mm/hugetlb.c
+@@ -2949,12 +2949,20 @@ int replace_free_hugepage_folios(unsigned long start_pfn, unsigned long end_pfn)
+ 
+ 	while (start_pfn < end_pfn) {
+ 		folio = pfn_folio(start_pfn);
++
++		/*
++		 * The folio might have been dissolved from under our feet, so make sure
++		 * to carefully check the state under the lock.
++		 */
++		spin_lock_irq(&hugetlb_lock);
+ 		if (folio_test_hugetlb(folio)) {
+ 			h = folio_hstate(folio);
+ 		} else {
++			spin_unlock_irq(&hugetlb_lock);
+ 			start_pfn++;
+ 			continue;
+ 		}
++		spin_unlock_irq(&hugetlb_lock);
+ 
+ 		if (!folio_ref_count(folio)) {
+ 			ret = alloc_and_dissolve_hugetlb_folio(h, folio,
+
+From 06717a7b6c86514dbd6ab322e8083ffaa4db5712 Mon Sep 17 00:00:00 2001
+From: Breno Leitao <leitao@debian.org>
+Date: Fri, 23 May 2025 10:21:06 -0700
+Subject: [PATCH 20/22] memcg: always call cond_resched() after fn()
+
+I am seeing soft lockup on certain machine types when a cgroup OOMs.  This
+is happening because killing the process in certain machine might be very
+slow, which causes the soft lockup and RCU stalls.  This happens usually
+when the cgroup has MANY processes and memory.oom.group is set.
+
+Example I am seeing in real production:
+
+       [462012.244552] Memory cgroup out of memory: Killed process 3370438 (crosvm) ....
+       ....
+       [462037.318059] Memory cgroup out of memory: Killed process 4171372 (adb) ....
+       [462037.348314] watchdog: BUG: soft lockup - CPU#64 stuck for 26s! [stat_manager-ag:1618982]
+       ....
+
+Quick look at why this is so slow, it seems to be related to serial flush
+for certain machine types.  For all the crashes I saw, the target CPU was
+at console_flush_all().
+
+In the case above, there are thousands of processes in the cgroup, and it
+is soft locking up before it reaches the 1024 limit in the code (which
+would call the cond_resched()).  So, cond_resched() in 1024 blocks is not
+sufficient.
+
+Remove the counter-based conditional rescheduling logic and call
+cond_resched() unconditionally after each task iteration, after fn() is
+called.  This avoids the lockup independently of how slow fn() is.
+
+Link: https://lkml.kernel.org/r/20250523-memcg_fix-v1-1-ad3eafb60477@debian.org
+Fixes: ade81479c7dd ("memcg: fix soft lockup in the OOM process")
+Signed-off-by: Breno Leitao <leitao@debian.org>
+Suggested-by: Rik van Riel <riel@surriel.com>
+Acked-by: Shakeel Butt <shakeel.butt@linux.dev>
+Cc: Michael van der Westhuizen <rmikey@meta.com>
+Cc: Usama Arif <usamaarif642@gmail.com>
+Cc: Pavel Begunkov <asml.silence@gmail.com>
+Cc: Chen Ridong <chenridong@huawei.com>
+Cc: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+Cc: Johannes Weiner <hannes@cmpxchg.org>
+Cc: Michal Hocko <mhocko@kernel.org>
+Cc: Michal Hocko <mhocko@suse.com>
+Cc: Muchun Song <muchun.song@linux.dev>
+Cc: Roman Gushchin <roman.gushchin@linux.dev>
+Cc: <stable@vger.kernel.org>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ mm/memcontrol.c | 6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/mm/memcontrol.c b/mm/memcontrol.c
+index c96c1f2b9cf57..2d4d65f25fecd 100644
+--- a/mm/memcontrol.c
++++ b/mm/memcontrol.c
+@@ -1168,7 +1168,6 @@ void mem_cgroup_scan_tasks(struct mem_cgroup *memcg,
+ {
+ 	struct mem_cgroup *iter;
+ 	int ret = 0;
+-	int i = 0;
+ 
+ 	BUG_ON(mem_cgroup_is_root(memcg));
+ 
+@@ -1178,10 +1177,9 @@ void mem_cgroup_scan_tasks(struct mem_cgroup *memcg,
+ 
+ 		css_task_iter_start(&iter->css, CSS_TASK_ITER_PROCS, &it);
+ 		while (!ret && (task = css_task_iter_next(&it))) {
+-			/* Avoid potential softlockup warning */
+-			if ((++i & 1023) == 0)
+-				cond_resched();
+ 			ret = fn(task, arg);
++			/* Avoid potential softlockup warning */
++			cond_resched();
+ 		}
+ 		css_task_iter_end(&it);
+ 		if (ret) {
+
+From ee40c9920ac286c5bfe7c811e66ff899266d2582 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ricardo=20Ca=C3=B1uelo=20Navarro?= <rcn@igalia.com>
+Date: Fri, 23 May 2025 14:19:10 +0200
+Subject: [PATCH 21/22] mm: fix copy_vma() error handling for hugetlb mappings
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+If, during a mremap() operation for a hugetlb-backed memory mapping,
+copy_vma() fails after the source vma has been duplicated and opened (ie.
+vma_link() fails), the error is handled by closing the new vma.  This
+updates the hugetlbfs reservation counter of the reservation map which at
+this point is referenced by both the source vma and the new copy.  As a
+result, once the new vma has been freed and copy_vma() returns, the
+reservation counter for the source vma will be incorrect.
+
+This patch addresses this corner case by clearing the hugetlb private page
+reservation reference for the new vma and decrementing the reference
+before closing the vma, so that vma_close() won't update the reservation
+counter.  This is also what copy_vma_and_data() does with the source vma
+if copy_vma() succeeds, so a helper function has been added to do the
+fixup in both functions.
+
+The issue was reported by a private syzbot instance and can be reproduced
+using the C reproducer in [1].  It's also a possible duplicate of public
+syzbot report [2].  The WARNING report is:
+
+============================================================
+page_counter underflow: -1024 nr_pages=1024
+WARNING: CPU: 0 PID: 3287 at mm/page_counter.c:61 page_counter_cancel+0xf6/0x120
+Modules linked in:
+CPU: 0 UID: 0 PID: 3287 Comm: repro__WARNING_ Not tainted 6.15.0-rc7+ #54 NONE
+Hardware name: QEMU Standard PC (Q35 + ICH9, 2009), BIOS rel-1.16.3-2-gc13ff2cd-prebuilt.qemu.org 04/01/2014
+RIP: 0010:page_counter_cancel+0xf6/0x120
+Code: ff 5b 41 5e 41 5f 5d c3 cc cc cc cc e8 f3 4f 8f ff c6 05 64 01 27 06 01 48 c7 c7 60 15 f8 85 48 89 de 4c 89 fa e8 2a a7 51 ff <0f> 0b e9 66 ff ff ff 44 89 f9 80 e1 07 38 c1 7c 9d 4c 81
+RSP: 0018:ffffc900025df6a0 EFLAGS: 00010246
+RAX: 2edfc409ebb44e00 RBX: fffffffffffffc00 RCX: ffff8880155f0000
+RDX: 0000000000000000 RSI: 0000000000000001 RDI: 0000000000000000
+RBP: dffffc0000000000 R08: ffffffff81c4a23c R09: 1ffff1100330482a
+R10: dffffc0000000000 R11: ffffed100330482b R12: 0000000000000000
+R13: ffff888058a882c0 R14: ffff888058a882c0 R15: 0000000000000400
+FS:  0000000000000000(0000) GS:ffff88808fc53000(0000) knlGS:0000000000000000
+CS:  0010 DS: 0000 ES: 0000 CR0: 0000000080050033
+CR2: 00000000004b33e0 CR3: 00000000076d6000 CR4: 00000000000006f0
+Call Trace:
+ <TASK>
+ page_counter_uncharge+0x33/0x80
+ hugetlb_cgroup_uncharge_counter+0xcb/0x120
+ hugetlb_vm_op_close+0x579/0x960
+ ? __pfx_hugetlb_vm_op_close+0x10/0x10
+ remove_vma+0x88/0x130
+ exit_mmap+0x71e/0xe00
+ ? __pfx_exit_mmap+0x10/0x10
+ ? __mutex_unlock_slowpath+0x22e/0x7f0
+ ? __pfx_exit_aio+0x10/0x10
+ ? __up_read+0x256/0x690
+ ? uprobe_clear_state+0x274/0x290
+ ? mm_update_next_owner+0xa9/0x810
+ __mmput+0xc9/0x370
+ exit_mm+0x203/0x2f0
+ ? __pfx_exit_mm+0x10/0x10
+ ? taskstats_exit+0x32b/0xa60
+ do_exit+0x921/0x2740
+ ? do_raw_spin_lock+0x155/0x3b0
+ ? __pfx_do_exit+0x10/0x10
+ ? __pfx_do_raw_spin_lock+0x10/0x10
+ ? _raw_spin_lock_irq+0xc5/0x100
+ do_group_exit+0x20c/0x2c0
+ get_signal+0x168c/0x1720
+ ? __pfx_get_signal+0x10/0x10
+ ? schedule+0x165/0x360
+ arch_do_signal_or_restart+0x8e/0x7d0
+ ? __pfx_arch_do_signal_or_restart+0x10/0x10
+ ? __pfx___se_sys_futex+0x10/0x10
+ syscall_exit_to_user_mode+0xb8/0x2c0
+ do_syscall_64+0x75/0x120
+ entry_SYSCALL_64_after_hwframe+0x76/0x7e
+RIP: 0033:0x422dcd
+Code: Unable to access opcode bytes at 0x422da3.
+RSP: 002b:00007ff266cdb208 EFLAGS: 00000246 ORIG_RAX: 00000000000000ca
+RAX: 0000000000000001 RBX: 00007ff266cdbcdc RCX: 0000000000422dcd
+RDX: 00000000000f4240 RSI: 0000000000000081 RDI: 00000000004c7bec
+RBP: 00007ff266cdb220 R08: 203a6362696c6720 R09: 203a6362696c6720
+R10: 0000200000c00000 R11: 0000000000000246 R12: ffffffffffffffd0
+R13: 0000000000000002 R14: 00007ffe1cb5f520 R15: 00007ff266cbb000
+ </TASK>
+============================================================
+
+Link: https://lkml.kernel.org/r/20250523-warning_in_page_counter_cancel-v2-1-b6df1a8cfefd@igalia.com
+Link: https://people.igalia.com/rcn/kernel_logs/20250422__WARNING_in_page_counter_cancel__repro.c [1]
+Link: https://lore.kernel.org/all/67000a50.050a0220.49194.048d.GAE@google.com/ [2]
+Signed-off-by: Ricardo Cañuelo Navarro <rcn@igalia.com>
+Suggested-by: Lorenzo Stoakes <lorenzo.stoakes@oracle.com>
+Reviewed-by: Liam R. Howlett <Liam.Howlett@oracle.com>
+Cc: Florent Revest <revest@google.com>
+Cc: Jann Horn <jannh@google.com>
+Cc: Oscar Salvador <osalvador@suse.de>
+Cc: Vlastimil Babka <vbabka@suse.cz>
+Cc: <stable@vger.kernel.org>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ include/linux/hugetlb.h |  5 +++++
+ mm/hugetlb.c            | 16 +++++++++++++++-
+ mm/mremap.c             |  3 +--
+ mm/vma.c                |  1 +
+ 4 files changed, 22 insertions(+), 3 deletions(-)
+
+diff --git a/include/linux/hugetlb.h b/include/linux/hugetlb.h
+index 8f3ac832ee7f3..4861a7e304bbf 100644
+--- a/include/linux/hugetlb.h
++++ b/include/linux/hugetlb.h
+@@ -275,6 +275,7 @@ long hugetlb_change_protection(struct vm_area_struct *vma,
+ bool is_hugetlb_entry_migration(pte_t pte);
+ bool is_hugetlb_entry_hwpoisoned(pte_t pte);
+ void hugetlb_unshare_all_pmds(struct vm_area_struct *vma);
++void fixup_hugetlb_reservations(struct vm_area_struct *vma);
+ 
+ #else /* !CONFIG_HUGETLB_PAGE */
+ 
+@@ -468,6 +469,10 @@ static inline vm_fault_t hugetlb_fault(struct mm_struct *mm,
+ 
+ static inline void hugetlb_unshare_all_pmds(struct vm_area_struct *vma) { }
+ 
++static inline void fixup_hugetlb_reservations(struct vm_area_struct *vma)
++{
++}
++
+ #endif /* !CONFIG_HUGETLB_PAGE */
+ 
+ #ifndef pgd_write
+diff --git a/mm/hugetlb.c b/mm/hugetlb.c
+index 55e6796b24d0a..6a3cf7935c149 100644
+--- a/mm/hugetlb.c
++++ b/mm/hugetlb.c
+@@ -1250,7 +1250,7 @@ void hugetlb_dup_vma_private(struct vm_area_struct *vma)
+ /*
+  * Reset and decrement one ref on hugepage private reservation.
+  * Called with mm->mmap_lock writer semaphore held.
+- * This function should be only used by move_vma() and operate on
++ * This function should be only used by mremap and operate on
+  * same sized vma. It should never come here with last ref on the
+  * reservation.
+  */
+@@ -7939,3 +7939,17 @@ void hugetlb_unshare_all_pmds(struct vm_area_struct *vma)
+ 	hugetlb_unshare_pmds(vma, ALIGN(vma->vm_start, PUD_SIZE),
+ 			ALIGN_DOWN(vma->vm_end, PUD_SIZE));
+ }
++
++/*
++ * For hugetlb, mremap() is an odd edge case - while the VMA copying is
++ * performed, we permit both the old and new VMAs to reference the same
++ * reservation.
++ *
++ * We fix this up after the operation succeeds, or if a newly allocated VMA
++ * is closed as a result of a failure to allocate memory.
++ */
++void fixup_hugetlb_reservations(struct vm_area_struct *vma)
++{
++	if (is_vm_hugetlb_page(vma))
++		clear_vma_resv_huge_pages(vma);
++}
+diff --git a/mm/mremap.c b/mm/mremap.c
+index 7db9da609c84f..0d4948b720e22 100644
+--- a/mm/mremap.c
++++ b/mm/mremap.c
+@@ -1188,8 +1188,7 @@ static int copy_vma_and_data(struct vma_remap_struct *vrm,
+ 		mremap_userfaultfd_prep(new_vma, vrm->uf);
+ 	}
+ 
+-	if (is_vm_hugetlb_page(vma))
+-		clear_vma_resv_huge_pages(vma);
++	fixup_hugetlb_reservations(vma);
+ 
+ 	/* Tell pfnmap has moved from this vma */
+ 	if (unlikely(vma->vm_flags & VM_PFNMAP))
+diff --git a/mm/vma.c b/mm/vma.c
+index 839d12f02c885..a468d4c29c0cd 100644
+--- a/mm/vma.c
++++ b/mm/vma.c
+@@ -1834,6 +1834,7 @@ struct vm_area_struct *copy_vma(struct vm_area_struct **vmap,
+ 	return new_vma;
+ 
+ out_vma_link:
++	fixup_hugetlb_reservations(new_vma);
+ 	vma_close(new_vma);
+ 
+ 	if (new_vma->vm_file)
+
+From 1ec971da1c10e6376411e6d4a3f3b2351217d94f Mon Sep 17 00:00:00 2001
+From: Jarkko Sakkinen <jarkko@kernel.org>
+Date: Fri, 23 May 2025 15:11:04 +0300
+Subject: [PATCH 22/22] mailmap: add Jarkko's employer email address
+
+Add the current employer email address to mailmap.
+
+Link: https://lkml.kernel.org/r/20250523121105.15850-1-jarkko@kernel.org
+Signed-off-by: Jarkko Sakkinen <jarkko@kernel.org>
+Cc: Alexander Sverdlin <alexander.sverdlin@gmail.com>
+Cc: Antonio Quartulli <antonio@openvpn.net>
+Cc: Carlos Bilbao <carlos.bilbao@kernel.org>
+Cc: Kees Cook <kees@kernel.org>
+Cc: Simon Wunderlich <sw@simonwunderlich.de>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ .mailmap | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/.mailmap b/.mailmap
+index 1c70e51c789d3..a2559e2d7fd93 100644
+--- a/.mailmap
++++ b/.mailmap
+@@ -312,6 +312,7 @@ Jan Glauber <jan.glauber@gmail.com> <jglauber@cavium.com>
+ Jan Kuliga <jtkuliga.kdev@gmail.com> <jankul@alatek.krakow.pl>
+ Jarkko Sakkinen <jarkko@kernel.org> <jarkko.sakkinen@linux.intel.com>
+ Jarkko Sakkinen <jarkko@kernel.org> <jarkko@profian.com>
++Jarkko Sakkinen <jarkko@kernel.org> <jarkko.sakkinen@opinsys.com>
+ Jason Gunthorpe <jgg@ziepe.ca> <jgg@mellanox.com>
+ Jason Gunthorpe <jgg@ziepe.ca> <jgg@nvidia.com>
+ Jason Gunthorpe <jgg@ziepe.ca> <jgunthorpe@obsidianresearch.com>

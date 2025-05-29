@@ -1,0 +1,492 @@
+From 40696426b8c8c4f13cf6ac52f0470eed144be4b2 Mon Sep 17 00:00:00 2001
+From: Kees Cook <kees@kernel.org>
+Date: Tue, 6 May 2025 20:35:40 -0700
+Subject: [PATCH 01/10] nvme-pci: make nvme_pci_npages_prp() __always_inline
+
+The only reason nvme_pci_npages_prp() could be used as a compile-time
+known result in BUILD_BUG_ON() is because the compiler was always choosing
+to inline the function. Under special circumstances (sanitizer coverage
+functions disabled for __init functions on ARCH=um), the compiler decided
+to stop inlining it:
+
+   drivers/nvme/host/pci.c: In function 'nvme_init':
+   include/linux/compiler_types.h:557:45: error: call to '__compiletime_assert_678' declared with attribute error: BUILD_BUG_ON failed: nvme_pci_npages_prp() > NVME_MAX_NR_ALLOCATIONS
+     557 |         _compiletime_assert(condition, msg, __compiletime_assert_, __COUNTER__)
+         |                                             ^
+   include/linux/compiler_types.h:538:25: note: in definition of macro '__compiletime_assert'
+     538 |                         prefix ## suffix();                             \
+         |                         ^~~~~~
+   include/linux/compiler_types.h:557:9: note: in expansion of macro '_compiletime_assert'
+     557 |         _compiletime_assert(condition, msg, __compiletime_assert_, __COUNTER__)
+         |         ^~~~~~~~~~~~~~~~~~~
+   include/linux/build_bug.h:39:37: note: in expansion of macro 'compiletime_assert'
+      39 | #define BUILD_BUG_ON_MSG(cond, msg) compiletime_assert(!(cond), msg)
+         |                                     ^~~~~~~~~~~~~~~~~~
+   include/linux/build_bug.h:50:9: note: in expansion of macro 'BUILD_BUG_ON_MSG'
+      50 |         BUILD_BUG_ON_MSG(condition, "BUILD_BUG_ON failed: " #condition)
+         |         ^~~~~~~~~~~~~~~~
+   drivers/nvme/host/pci.c:3804:9: note: in expansion of macro 'BUILD_BUG_ON'
+    3804 |         BUILD_BUG_ON(nvme_pci_npages_prp() > NVME_MAX_NR_ALLOCATIONS);
+         |         ^~~~~~~~~~~~
+
+Force it to be __always_inline to make sure it is always available for
+use with BUILD_BUG_ON().
+
+Reported-by: kernel test robot <lkp@intel.com>
+Closes: https://lore.kernel.org/oe-kbuild-all/202505061846.12FMyRjj-lkp@intel.com/
+Fixes: c372cdd1efdf ("nvme-pci: iod npages fits in s8")
+Signed-off-by: Kees Cook <kees@kernel.org>
+Signed-off-by: Christoph Hellwig <hch@lst.de>
+---
+ drivers/nvme/host/pci.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/host/pci.c b/drivers/nvme/host/pci.c
+index 2e30e9be7408c..de084ece21361 100644
+--- a/drivers/nvme/host/pci.c
++++ b/drivers/nvme/host/pci.c
+@@ -390,7 +390,7 @@ static bool nvme_dbbuf_update_and_check_event(u16 value, __le32 *dbbuf_db,
+  * as it only leads to a small amount of wasted memory for the lifetime of
+  * the I/O.
+  */
+-static int nvme_pci_npages_prp(void)
++static __always_inline int nvme_pci_npages_prp(void)
+ {
+ 	unsigned max_bytes = (NVME_MAX_KB_SZ * 1024) + NVME_CTRL_PAGE_SIZE;
+ 	unsigned nprps = DIV_ROUND_UP(max_bytes, NVME_CTRL_PAGE_SIZE);
+
+From 3d8932133dcecbd9bef1559533c1089601006f45 Mon Sep 17 00:00:00 2001
+From: Keith Busch <kbusch@kernel.org>
+Date: Thu, 8 May 2025 16:57:06 +0200
+Subject: [PATCH 02/10] nvme-pci: acquire cq_poll_lock in nvme_poll_irqdisable
+
+We need to lock this queue for that condition because the timeout work
+executes per-namespace and can poll the poll CQ.
+
+Reported-by: Hannes Reinecke <hare@kernel.org>
+Closes: https://lore.kernel.org/all/20240902130728.1999-1-hare@kernel.org/
+Fixes: a0fa9647a54e ("NVMe: add blk polling support")
+Signed-off-by: Keith Busch <kbusch@kernel.org>
+Signed-off-by: Daniel Wagner <wagi@kernel.org>
+Signed-off-by: Christoph Hellwig <hch@lst.de>
+---
+ drivers/nvme/host/pci.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/nvme/host/pci.c b/drivers/nvme/host/pci.c
+index de084ece21361..a9390ac7211ea 100644
+--- a/drivers/nvme/host/pci.c
++++ b/drivers/nvme/host/pci.c
+@@ -1202,7 +1202,9 @@ static void nvme_poll_irqdisable(struct nvme_queue *nvmeq)
+ 	WARN_ON_ONCE(test_bit(NVMEQ_POLLED, &nvmeq->flags));
+ 
+ 	disable_irq(pci_irq_vector(pdev, nvmeq->cq_vector));
++	spin_lock(&nvmeq->cq_poll_lock);
+ 	nvme_poll_cq(nvmeq, NULL);
++	spin_unlock(&nvmeq->cq_poll_lock);
+ 	enable_irq(pci_irq_vector(pdev, nvmeq->cq_vector));
+ }
+ 
+
+From 85adf2094abb9084770dc4ab302aaa9c5d26dd2d Mon Sep 17 00:00:00 2001
+From: Damien Le Moal <dlemoal@kernel.org>
+Date: Fri, 9 May 2025 08:25:00 +0900
+Subject: [PATCH 03/10] nvmet: pci-epf: clear completion queue IRQ flag on
+ delete
+
+The function nvmet_pci_epf_delete_cq() unconditionally calls
+nvmet_pci_epf_remove_irq_vector() even for completion queues that do not
+have interrupts enabled. Furthermore, for completion queues that do
+have IRQ enabled, deleting and re-creating the completion queue leaves
+the flag NVMET_PCI_EPF_Q_IRQ_ENABLED set, even if the completion queue
+is being re-created with IRQ disabled.
+
+Fix these issues by calling nvmet_pci_epf_remove_irq_vector() only if
+NVMET_PCI_EPF_Q_IRQ_ENABLED is set and make sure to always clear that
+flag.
+
+Fixes: 0faa0fe6f90e ("nvmet: New NVMe PCI endpoint function target driver")
+Cc: stable@vger.kernel.org
+Signed-off-by: Damien Le Moal <dlemoal@kernel.org>
+Signed-off-by: Christoph Hellwig <hch@lst.de>
+---
+ drivers/nvme/target/pci-epf.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/target/pci-epf.c b/drivers/nvme/target/pci-epf.c
+index 7fab7f3d79b74..d5442991f2fbd 100644
+--- a/drivers/nvme/target/pci-epf.c
++++ b/drivers/nvme/target/pci-epf.c
+@@ -1344,7 +1344,8 @@ static u16 nvmet_pci_epf_delete_cq(struct nvmet_ctrl *tctrl, u16 cqid)
+ 
+ 	cancel_delayed_work_sync(&cq->work);
+ 	nvmet_pci_epf_drain_queue(cq);
+-	nvmet_pci_epf_remove_irq_vector(ctrl, cq->vector);
++	if (test_and_clear_bit(NVMET_PCI_EPF_Q_IRQ_ENABLED, &cq->flags))
++		nvmet_pci_epf_remove_irq_vector(ctrl, cq->vector);
+ 	nvmet_pci_epf_mem_unmap(ctrl->nvme_epf, &cq->pci_map);
+ 
+ 	return NVME_SC_SUCCESS;
+
+From 2c3a6f6a28051f323baf19b48af86e48b812831d Mon Sep 17 00:00:00 2001
+From: Damien Le Moal <dlemoal@kernel.org>
+Date: Fri, 9 May 2025 08:25:01 +0900
+Subject: [PATCH 04/10] nvmet: pci-epf: do not fall back to using INTX if not
+ supported
+
+Some endpoint PCIe controllers do not support raising legacy INTX
+interrupts. This support is indicated by the intx_capable field of
+struct pci_epc_features. Modify nvmet_pci_epf_raise_irq() to not
+automatically fallback to trying raising an INTX interrupt after an MSI
+or MSI-X error if the controller does not support INTX.
+
+Signed-off-by: Damien Le Moal <dlemoal@kernel.org>
+Signed-off-by: Christoph Hellwig <hch@lst.de>
+---
+ drivers/nvme/target/pci-epf.c | 12 +++++++-----
+ 1 file changed, 7 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/nvme/target/pci-epf.c b/drivers/nvme/target/pci-epf.c
+index d5442991f2fbd..bde7818c673d8 100644
+--- a/drivers/nvme/target/pci-epf.c
++++ b/drivers/nvme/target/pci-epf.c
+@@ -636,14 +636,16 @@ static void nvmet_pci_epf_raise_irq(struct nvmet_pci_epf_ctrl *ctrl,
+ 	switch (nvme_epf->irq_type) {
+ 	case PCI_IRQ_MSIX:
+ 	case PCI_IRQ_MSI:
++		/*
++		 * If we fail to raise an MSI or MSI-X interrupt, it is likely
++		 * because the host is using legacy INTX IRQs (e.g. BIOS,
++		 * grub), but we can fallback to the INTX type only if the
++		 * endpoint controller supports this type.
++		 */
+ 		ret = pci_epc_raise_irq(epf->epc, epf->func_no, epf->vfunc_no,
+ 					nvme_epf->irq_type, cq->vector + 1);
+-		if (!ret)
++		if (!ret || !nvme_epf->epc_features->intx_capable)
+ 			break;
+-		/*
+-		 * If we got an error, it is likely because the host is using
+-		 * legacy IRQs (e.g. BIOS, grub).
+-		 */
+ 		fallthrough;
+ 	case PCI_IRQ_INTX:
+ 		ret = pci_epc_raise_irq(epf->epc, epf->func_no, epf->vfunc_no,
+
+From 4236e600bf902202214aa6277e84c4738c56f762 Mon Sep 17 00:00:00 2001
+From: Damien Le Moal <dlemoal@kernel.org>
+Date: Fri, 9 May 2025 08:25:02 +0900
+Subject: [PATCH 05/10] nvmet: pci-epf: cleanup nvmet_pci_epf_raise_irq()
+
+There is no point in taking the controller irq_lock and calling
+nvmet_pci_epf_should_raise_irq() for a completion queue which does not
+have IRQ enabled (NVMET_PCI_EPF_Q_IRQ_ENABLED flag is not set).
+Move the test for the NVMET_PCI_EPF_Q_IRQ_ENABLED flag out of
+nvmet_pci_epf_should_raise_irq() to the top of nvmet_pci_epf_raise_irq()
+to return early when no IRQ should be raised.
+
+Also, use dev_err_ratelimited() to avoid a message storm under load when
+raising IRQs is failing.
+
+Signed-off-by: Damien Le Moal <dlemoal@kernel.org>
+Reviewed-by: Niklas Cassel <cassel@kernel.org>
+Signed-off-by: Christoph Hellwig <hch@lst.de>
+---
+ drivers/nvme/target/pci-epf.c | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/nvme/target/pci-epf.c b/drivers/nvme/target/pci-epf.c
+index bde7818c673d8..a6ccf3fcccc23 100644
+--- a/drivers/nvme/target/pci-epf.c
++++ b/drivers/nvme/target/pci-epf.c
+@@ -596,9 +596,6 @@ static bool nvmet_pci_epf_should_raise_irq(struct nvmet_pci_epf_ctrl *ctrl,
+ 	struct nvmet_pci_epf_irq_vector *iv = cq->iv;
+ 	bool ret;
+ 
+-	if (!test_bit(NVMET_PCI_EPF_Q_IRQ_ENABLED, &cq->flags))
+-		return false;
+-
+ 	/* IRQ coalescing for the admin queue is not allowed. */
+ 	if (!cq->qid)
+ 		return true;
+@@ -625,7 +622,8 @@ static void nvmet_pci_epf_raise_irq(struct nvmet_pci_epf_ctrl *ctrl,
+ 	struct pci_epf *epf = nvme_epf->epf;
+ 	int ret = 0;
+ 
+-	if (!test_bit(NVMET_PCI_EPF_Q_LIVE, &cq->flags))
++	if (!test_bit(NVMET_PCI_EPF_Q_LIVE, &cq->flags) ||
++	    !test_bit(NVMET_PCI_EPF_Q_IRQ_ENABLED, &cq->flags))
+ 		return;
+ 
+ 	mutex_lock(&ctrl->irq_lock);
+@@ -658,7 +656,9 @@ static void nvmet_pci_epf_raise_irq(struct nvmet_pci_epf_ctrl *ctrl,
+ 	}
+ 
+ 	if (ret)
+-		dev_err(ctrl->dev, "Failed to raise IRQ (err=%d)\n", ret);
++		dev_err_ratelimited(ctrl->dev,
++				    "CQ[%u]: Failed to raise IRQ (err=%d)\n",
++				    cq->qid, ret);
+ 
+ unlock:
+ 	mutex_unlock(&ctrl->irq_lock);
+
+From 4f6f3f4fe31695cd69874457573a2236c05fef02 Mon Sep 17 00:00:00 2001
+From: Damien Le Moal <dlemoal@kernel.org>
+Date: Fri, 9 May 2025 08:25:03 +0900
+Subject: [PATCH 06/10] nvmet: pci-epf: improve debug message
+
+Improve the debug message of nvmet_pci_epf_create_cq() to indicate if a
+completion queue IRQ is disabled.
+
+Signed-off-by: Damien Le Moal <dlemoal@kernel.org>
+Reviewed-by: Niklas Cassel <cassel@kernel.org>
+Signed-off-by: Christoph Hellwig <hch@lst.de>
+---
+ drivers/nvme/target/pci-epf.c | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/nvme/target/pci-epf.c b/drivers/nvme/target/pci-epf.c
+index a6ccf3fcccc23..94a908b2340ee 100644
+--- a/drivers/nvme/target/pci-epf.c
++++ b/drivers/nvme/target/pci-epf.c
+@@ -1321,8 +1321,14 @@ static u16 nvmet_pci_epf_create_cq(struct nvmet_ctrl *tctrl,
+ 
+ 	set_bit(NVMET_PCI_EPF_Q_LIVE, &cq->flags);
+ 
+-	dev_dbg(ctrl->dev, "CQ[%u]: %u entries of %zu B, IRQ vector %u\n",
+-		cqid, qsize, cq->qes, cq->vector);
++	if (test_bit(NVMET_PCI_EPF_Q_IRQ_ENABLED, &cq->flags))
++		dev_dbg(ctrl->dev,
++			"CQ[%u]: %u entries of %zu B, IRQ vector %u\n",
++			cqid, qsize, cq->qes, cq->vector);
++	else
++		dev_dbg(ctrl->dev,
++			"CQ[%u]: %u entries of %zu B, IRQ disabled\n",
++			cqid, qsize, cq->qes);
+ 
+ 	return NVME_SC_SUCCESS;
+ 
+
+From 8113d610a79885db5d53b5e01138ed4159e05ce9 Mon Sep 17 00:00:00 2001
+From: Damien Le Moal <dlemoal@kernel.org>
+Date: Fri, 9 May 2025 08:25:04 +0900
+Subject: [PATCH 07/10] nvmet: pci-epf: remove NVMET_PCI_EPF_Q_IS_SQ
+
+The flag NVMET_PCI_EPF_Q_IS_SQ is set but never used. Remove it.
+
+Signed-off-by: Damien Le Moal <dlemoal@kernel.org>
+Signed-off-by: Christoph Hellwig <hch@lst.de>
+---
+ drivers/nvme/target/pci-epf.c | 4 +---
+ 1 file changed, 1 insertion(+), 3 deletions(-)
+
+diff --git a/drivers/nvme/target/pci-epf.c b/drivers/nvme/target/pci-epf.c
+index 94a908b2340ee..7123c855b5a67 100644
+--- a/drivers/nvme/target/pci-epf.c
++++ b/drivers/nvme/target/pci-epf.c
+@@ -62,8 +62,7 @@ static DEFINE_MUTEX(nvmet_pci_epf_ports_mutex);
+ #define NVMET_PCI_EPF_CQ_RETRY_INTERVAL	msecs_to_jiffies(1)
+ 
+ enum nvmet_pci_epf_queue_flags {
+-	NVMET_PCI_EPF_Q_IS_SQ = 0,	/* The queue is a submission queue */
+-	NVMET_PCI_EPF_Q_LIVE,		/* The queue is live */
++	NVMET_PCI_EPF_Q_LIVE = 0,	/* The queue is live */
+ 	NVMET_PCI_EPF_Q_IRQ_ENABLED,	/* IRQ is enabled for this queue */
+ };
+ 
+@@ -1542,7 +1541,6 @@ static void nvmet_pci_epf_init_queue(struct nvmet_pci_epf_ctrl *ctrl,
+ 
+ 	if (sq) {
+ 		queue = &ctrl->sq[qid];
+-		set_bit(NVMET_PCI_EPF_Q_IS_SQ, &queue->flags);
+ 	} else {
+ 		queue = &ctrl->cq[qid];
+ 		INIT_DELAYED_WORK(&queue->work, nvmet_pci_epf_cq_work);
+
+From a21675ee3b1ba094e229ae4cd8bddf7d215ab1b9 Mon Sep 17 00:00:00 2001
+From: Alan Adamson <alan.adamson@oracle.com>
+Date: Thu, 8 May 2025 15:38:00 -0700
+Subject: [PATCH 08/10] nvme: multipath: enable BLK_FEAT_ATOMIC_WRITES for
+ multipathing
+
+A change to QEMU resulted in all nvme controllers (single and
+multi-controller subsystems) to have its CMIC.MCTRS bit set which
+indicates the subsystem supports multiple controllers and it is possible
+a namespace can be shared between those multiple controllers in a
+multipath configuration.
+
+When a namespace of a CMIC.MCTRS enabled subsystem is allocated, a
+multipath node is created.  The queue limits for this node are inherited
+from the namespace being allocated. When inheriting queue limits, the
+features being inherited need to be specified. The atomic write feature
+(BLK_FEAT_ATOMIC_WRITES) was not specified so the atomic queue limits
+were not inherited by the multipath disk node which resulted in the sysfs
+atomic write attributes being zeroed. The fix is to include
+BLK_FEAT_ATOMIC_WRITES in the list of features to be inherited.
+
+Signed-off-by: Alan Adamson <alan.adamson@oracle.com>
+Reviewed-by: John Garry <john.g.garry@oracle.com>
+Signed-off-by: Christoph Hellwig <hch@lst.de>
+---
+ drivers/nvme/host/multipath.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/nvme/host/multipath.c b/drivers/nvme/host/multipath.c
+index 61b1d267ffdaa..537a6271a06e2 100644
+--- a/drivers/nvme/host/multipath.c
++++ b/drivers/nvme/host/multipath.c
+@@ -638,7 +638,8 @@ int nvme_mpath_alloc_disk(struct nvme_ctrl *ctrl, struct nvme_ns_head *head)
+ 
+ 	blk_set_stacking_limits(&lim);
+ 	lim.dma_alignment = 3;
+-	lim.features |= BLK_FEAT_IO_STAT | BLK_FEAT_NOWAIT | BLK_FEAT_POLL;
++	lim.features |= BLK_FEAT_IO_STAT | BLK_FEAT_NOWAIT |
++		BLK_FEAT_POLL | BLK_FEAT_ATOMIC_WRITES;
+ 	if (head->ids.csi == NVME_CSI_ZNS)
+ 		lim.features |= BLK_FEAT_ZONED;
+ 
+
+From 8695f060a02953b33ac6240895dcb9c7ce16c91c Mon Sep 17 00:00:00 2001
+From: Alan Adamson <alan.adamson@oracle.com>
+Date: Thu, 8 May 2025 15:38:01 -0700
+Subject: [PATCH 09/10] nvme: all namespaces in a subsystem must adhere to a
+ common atomic write size
+
+The first namespace configured in a subsystem sets the subsystem's
+atomic write size based on its AWUPF or NAWUPF. Subsequent namespaces
+must have an atomic write size (per their AWUPF or NAWUPF) less than or
+equal to the subsystem's atomic write size, or their probing will be
+rejected.
+
+Signed-off-by: Alan Adamson <alan.adamson@oracle.com>
+[hch: fold in review comments from John Garry]
+Signed-off-by: Christoph Hellwig <hch@lst.de>
+Reviewed-by: John Garry <john.g.garry@oracle.com>
+---
+ drivers/nvme/host/core.c | 30 +++++++++++++++++++++++++++---
+ drivers/nvme/host/nvme.h |  3 ++-
+ 2 files changed, 29 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
+index ac53629fce68d..6b04473c0ab73 100644
+--- a/drivers/nvme/host/core.c
++++ b/drivers/nvme/host/core.c
+@@ -2059,7 +2059,21 @@ static bool nvme_update_disk_info(struct nvme_ns *ns, struct nvme_id_ns *id,
+ 		if (id->nsfeat & NVME_NS_FEAT_ATOMICS && id->nawupf)
+ 			atomic_bs = (1 + le16_to_cpu(id->nawupf)) * bs;
+ 		else
+-			atomic_bs = (1 + ns->ctrl->subsys->awupf) * bs;
++			atomic_bs = (1 + ns->ctrl->awupf) * bs;
++
++		/*
++		 * Set subsystem atomic bs.
++		 */
++		if (ns->ctrl->subsys->atomic_bs) {
++			if (atomic_bs != ns->ctrl->subsys->atomic_bs) {
++				dev_err_ratelimited(ns->ctrl->device,
++					"%s: Inconsistent Atomic Write Size, Namespace will not be added: Subsystem=%d bytes, Controller/Namespace=%d bytes\n",
++					ns->disk ? ns->disk->disk_name : "?",
++					ns->ctrl->subsys->atomic_bs,
++					atomic_bs);
++			}
++		} else
++			ns->ctrl->subsys->atomic_bs = atomic_bs;
+ 
+ 		nvme_update_atomic_write_disk_info(ns, id, lim, bs, atomic_bs);
+ 	}
+@@ -2201,6 +2215,17 @@ static int nvme_update_ns_info_block(struct nvme_ns *ns,
+ 	nvme_set_chunk_sectors(ns, id, &lim);
+ 	if (!nvme_update_disk_info(ns, id, &lim))
+ 		capacity = 0;
++
++	/*
++	 * Validate the max atomic write size fits within the subsystem's
++	 * atomic write capabilities.
++	 */
++	if (lim.atomic_write_hw_max > ns->ctrl->subsys->atomic_bs) {
++		blk_mq_unfreeze_queue(ns->disk->queue, memflags);
++		ret = -ENXIO;
++		goto out;
++	}
++
+ 	nvme_config_discard(ns, &lim);
+ 	if (IS_ENABLED(CONFIG_BLK_DEV_ZONED) &&
+ 	    ns->head->ids.csi == NVME_CSI_ZNS)
+@@ -3031,7 +3056,6 @@ static int nvme_init_subsystem(struct nvme_ctrl *ctrl, struct nvme_id_ctrl *id)
+ 		kfree(subsys);
+ 		return -EINVAL;
+ 	}
+-	subsys->awupf = le16_to_cpu(id->awupf);
+ 	nvme_mpath_default_iopolicy(subsys);
+ 
+ 	subsys->dev.class = &nvme_subsys_class;
+@@ -3441,7 +3465,7 @@ static int nvme_init_identify(struct nvme_ctrl *ctrl)
+ 		dev_pm_qos_expose_latency_tolerance(ctrl->device);
+ 	else if (!ctrl->apst_enabled && prev_apst_enabled)
+ 		dev_pm_qos_hide_latency_tolerance(ctrl->device);
+-
++	ctrl->awupf = le16_to_cpu(id->awupf);
+ out_free:
+ 	kfree(id);
+ 	return ret;
+diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
+index 51e0786421271..8fc4683418a3a 100644
+--- a/drivers/nvme/host/nvme.h
++++ b/drivers/nvme/host/nvme.h
+@@ -410,6 +410,7 @@ struct nvme_ctrl {
+ 
+ 	enum nvme_ctrl_type cntrltype;
+ 	enum nvme_dctype dctype;
++	u16 awupf; /* 0's based value. */
+ };
+ 
+ static inline enum nvme_ctrl_state nvme_ctrl_state(struct nvme_ctrl *ctrl)
+@@ -442,11 +443,11 @@ struct nvme_subsystem {
+ 	u8			cmic;
+ 	enum nvme_subsys_type	subtype;
+ 	u16			vendor_id;
+-	u16			awupf;	/* 0's based awupf value. */
+ 	struct ida		ns_ida;
+ #ifdef CONFIG_NVME_MULTIPATH
+ 	enum nvme_iopolicy	iopolicy;
+ #endif
++	u32			atomic_bs;
+ };
+ 
+ /*
+
+From e765bf89f42b5c82132a556b630affeb82b2a21f Mon Sep 17 00:00:00 2001
+From: Ilya Guterman <amfernusus@gmail.com>
+Date: Sat, 10 May 2025 19:21:30 +0900
+Subject: [PATCH 10/10] nvme-pci: add NVME_QUIRK_NO_DEEPEST_PS quirk for
+ SOLIDIGM P44 Pro
+
+This commit adds the NVME_QUIRK_NO_DEEPEST_PS quirk for device
+[126f:2262], which belongs to device SOLIDIGM P44 Pro SSDPFKKW020X7
+
+The device frequently have trouble exiting the deepest power state (5),
+resulting in the entire disk being unresponsive.
+
+Verified by setting nvme_core.default_ps_max_latency_us=10000 and
+observing the expected behavior.
+
+Signed-off-by: Ilya Guterman <amfernusus@gmail.com>
+Signed-off-by: Christoph Hellwig <hch@lst.de>
+---
+ drivers/nvme/host/pci.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/nvme/host/pci.c b/drivers/nvme/host/pci.c
+index a9390ac7211ea..f1dd804151b1c 100644
+--- a/drivers/nvme/host/pci.c
++++ b/drivers/nvme/host/pci.c
+@@ -3739,6 +3739,8 @@ static const struct pci_device_id nvme_id_table[] = {
+ 		.driver_data = NVME_QUIRK_NO_DEEPEST_PS, },
+ 	{ PCI_DEVICE(0x1e49, 0x0041),   /* ZHITAI TiPro7000 NVMe SSD */
+ 		.driver_data = NVME_QUIRK_NO_DEEPEST_PS, },
++	{ PCI_DEVICE(0x025e, 0xf1ac),   /* SOLIDIGM  P44 pro SSDPFKKW020X7  */
++		.driver_data = NVME_QUIRK_NO_DEEPEST_PS, },
+ 	{ PCI_DEVICE(0xc0a9, 0x540a),   /* Crucial P2 */
+ 		.driver_data = NVME_QUIRK_BOGUS_NID, },
+ 	{ PCI_DEVICE(0x1d97, 0x2263), /* Lexar NM610 */
