@@ -29,10 +29,10 @@ https://raw.githubusercontent.com/GloriousEggroll/Linux-Pollrate-Patch/refs/head
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0150-select-core_sys_select-add-unlikely-branch-hint-on-r.patch
 # https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0169-mm-mincore-improve-performance-by-adding-an-unlikely.patch
 # https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0170-sched-Add-unlikey-branch-hints-to-several-system-cal.patch
-https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0171-kcmp-improve-performance-adding-an-unlikely-hint-to-.patch
+# https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0171-kcmp-improve-performance-adding-an-unlikely-hint-to-.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0175-readdir-add-unlikely-hint-on-len-check.patch
 
-https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0102-increase-the-ext4-default-commit-age.patch
+# https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0102-increase-the-ext4-default-commit-age.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0104-pci-pme-wakeups.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0106-intel_idle-tweak-cpuidle-cstates.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0108-smpboot-reuse-timer-calibration.patch
