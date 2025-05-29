@@ -47,6 +47,7 @@ https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0116-mig
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0117-xattr-allow-setting-user.-attributes-on-symlinks-by-.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0125-nvme-workaround.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0128-itmt_epb-use-epb-to-scale-itmt.patch
+https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0129-mm-wakeups-remove-a-wakeup.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0130-itmt2-ADL-fixes.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0131-add-a-per-cpu-minimum-high-watermark-an-tune-batch-s.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0135-initcall-only-print-non-zero-initcall-debug-to-speed.patch
