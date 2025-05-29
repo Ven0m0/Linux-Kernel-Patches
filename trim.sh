@@ -1,21 +1,18 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Trim kernel by deselecting options not enabled in the Clear Linux config.
 # Options already unset in the CachyOS config were pruned from this list.
-# Last checked: 2025-03-07
 
 # Exit immediately on error.
 set -e
 
-#
+cd "$1" || { echo "Directory not found: $1"; exit 1; }
+
 # Processor type and features
-#
 scripts/config -d XEN
 scripts/config -d PVH
 scripts/config -d PARAVIRT_TIME_ACCOUNTING
 
-#
 # Partition Types
-#
 scripts/config -d AIX_PARTITION
 scripts/config -d MAC_PARTITION
 scripts/config -d BSD_DISKLABEL
@@ -24,14 +21,10 @@ scripts/config -d SOLARIS_X86_PARTITION
 scripts/config -d LDM_PARTITION
 scripts/config -d KARMA_PARTITION
 
-#
 # Data Access Monitoring
-#
 scripts/config -d DAMON
 
-#
 # Networking options
-#
 scripts/config -d SMC_LO
 scripts/config -d IP_FIB_TRIE_STATS
 scripts/config -d IP_ROUTE_VERBOSE
@@ -50,15 +43,12 @@ scripts/config -d IPV6_SEG6_HMAC
 scripts/config -d IPV6_RPL_LWTUNNEL
 scripts/config -d IPV6_IOAM6_LWTUNNEL
 
-#
 # Core Netfilter Configuration
-#
 scripts/config -d NETFILTER_NETLINK_HOOK
 scripts/config -d NF_CONNTRACK_PROCFS
 scripts/config -d NF_CONNTRACK_TIMEOUT
 scripts/config -d NF_CONNTRACK_TIMESTAMP
 scripts/config -d NETFILTER_NETLINK_GLUE_CT
-
 scripts/config -d TIPC_MEDIA_IB
 scripts/config -d ATM
 scripts/config -d L2TP_V3
@@ -70,9 +60,7 @@ scripts/config -d PHONET
 scripts/config -d 6LOWPAN_DEBUGFS
 scripts/config -d IEEE802154_NL802154_EXPERIMENTAL
 
-#
 # Classification
-#
 scripts/config -d CLS_U32_MARK
 scripts/config -d GACT_PROB
 scripts/config -d NET_ACT_GATE
@@ -84,18 +72,14 @@ scripts/config -d QRTR_SMD
 scripts/config -d QRTR_TUN
 scripts/config -d NET_NCSI
 
-#
 # Network testing
-#
 scripts/config -d HAMRADIO
 scripts/config -d CAN_ISOTP
 scripts/config -d BT_LEDS
 scripts/config -d BT_AOSPEXT
 scripts/config -d BT_DEBUGFS
 
-#
 # Bluetooth device drivers
-#
 scripts/config -d BT_HCIUART_BCSP
 scripts/config -d BT_HCIUART_ATH3K
 scripts/config -d BT_HCIUART_LL
@@ -106,7 +90,6 @@ scripts/config -d BT_HCIUART_AG6XX
 scripts/config -d BT_HCIUART_MRVL
 scripts/config -d BT_MTKUART
 scripts/config -d BT_NXPUART
-
 scripts/config -d AF_RXRPC_IPV6
 scripts/config -d AF_RXRPC_DEBUG
 scripts/config -d RXKAD
@@ -120,9 +103,7 @@ scripts/config -d NFC_NCI_SPI
 scripts/config -d NFC_NCI_UART
 scripts/config -d NFC_SHDLC
 
-#
 # Near Field Communication (NFC) devices
-#
 scripts/config -d NFC_FDP
 scripts/config -d NFC_MRVL_I2C
 scripts/config -d NFC_ST_NCI_I2C
@@ -131,32 +112,22 @@ scripts/config -d NFC_S3FWRN5_I2C
 scripts/config -d NFC_S3FWRN82_UART
 scripts/config -d NFC_ST95HF
 
-#
 # Device Drivers
-#
 scripts/config -d PCIEAER_INJECT
 scripts/config -d PCIE_ECRC
 scripts/config -d PCIE_DPC
 scripts/config -d PCI_P2PDMA
 scripts/config -d HOTPLUG_PCI_CPCI
-
 scripts/config -d PCCARD
 
-#
 # Bus devices
-#
 scripts/config -d MHI_BUS_PCI_GENERIC
 
-#
 # EFI (Extensible Firmware Interface) Support
-#
 scripts/config -d EFI_CUSTOM_SSDT_OVERLAYS
-
 scripts/config -d GNSS
 
-#
 # RAM/ROM/Flash chip drivers
-#
 scripts/config -d MTD_CFI_BE_BYTE_SWAP
 scripts/config -d MTD_CFI_LE_BYTE_SWAP
 scripts/config -d MTD_OTP
@@ -174,16 +145,12 @@ scripts/config -d MTD_NAND_ECC_MXIC
 scripts/config -d MTD_UBI_NVMEM
 scripts/config -d PNP_DEBUG_MESSAGES
 
-#
 # NVME Support
-#
 scripts/config -d NVME_VERBOSE_ERRORS
 scripts/config -d NVME_TARGET_DEBUGFS
 scripts/config -d NVME_TARGET_TCP_TLS
 
-#
 # Misc devices
-#
 scripts/config -d AD525X_DPOT
 scripts/config -d PHANTOM
 scripts/config -d ICS932S401
@@ -195,21 +162,15 @@ scripts/config -d XILINX_SDFEC
 scripts/config -d TPS6594_ESM
 scripts/config -d C2PORT
 
-#
 # Texas Instruments shared transport line discipline
-#
 scripts/config -d TI_ST
-
 scripts/config -d GENWQE
 scripts/config -d BCM_VK_TTY
 scripts/config -d PVPANIC
 scripts/config -d KEBA_CP500
 
-#
 # SCSI device support
-#
 scripts/config -d SCSI_PROC_FS
-
 scripts/config -d SCSI_AIC94XX
 scripts/config -d SCSI_MVSAS_TASKLET
 scripts/config -d MEGARAID_NEWGEN
@@ -220,18 +181,13 @@ scripts/config -d QEDI
 scripts/config -d QEDF
 scripts/config -d SCSI_EFCT
 scripts/config -d SCSI_DH
-
 scripts/config -d ATA_VERBOSE_ERROR
 scripts/config -d SATA_ZPODD
 
-#
 # SATA SFF controllers with BMDMA
-#
 scripts/config -d SATA_DWC
 
-#
 # PATA SFF controllers with BMDMA
-#
 scripts/config -d PATA_ALI
 scripts/config -d PATA_AMD
 scripts/config -d PATA_ARTOP
@@ -263,18 +219,14 @@ scripts/config -d PATA_TRIFLEX
 scripts/config -d PATA_VIA
 scripts/config -d PATA_WINBOND
 
-#
 # PIO-only SFF controllers
-#
 scripts/config -d PATA_CMD640_PCI
 scripts/config -d PATA_NS87410
 scripts/config -d PATA_OPTI
 scripts/config -d PATA_RZ1000
 scripts/config -d PATA_PARPORT
 
-#
 # Generic fallback / legacy drivers
-#
 scripts/config -d PATA_LEGACY
 scripts/config -d MD_AUTODETECT
 scripts/config -d MD_CLUSTER
@@ -289,19 +241,14 @@ scripts/config -d DM_UEVENT
 scripts/config -d DM_VERITY_FEC
 scripts/config -d REMOTE_TARGET
 
-#
 # IEEE 1394 (FireWire) support
-#
 scripts/config -d FIREWIRE
 scripts/config -d FIREWIRE_NOSY
-
 scripts/config -d MACINTOSH_DRIVERS
 scripts/config -d NET_FC
 scripts/config -d MHI_NET
 
-#
 # Distributed Switch Architecture drivers
-#
 scripts/config -d NET_DSA_HIRSCHMANN_HELLCREEK
 scripts/config -d NET_DSA_MV88E6XXX_PTP
 scripts/config -d NET_DSA_AR9331
@@ -309,7 +256,6 @@ scripts/config -d NET_DSA_QCA8K_LEDS_SUPPORT
 scripts/config -d NET_DSA_SJA1105_TAS
 scripts/config -d NET_DSA_VITESSE_VSC73XX_SPI
 scripts/config -d NET_DSA_VITESSE_VSC73XX_PLATFORM
-
 scripts/config -d NET_VENDOR_3COM
 scripts/config -d NET_VENDOR_ADAPTEC
 scripts/config -d NET_VENDOR_ALACRITECH
@@ -364,9 +310,7 @@ scripts/config -d NET_VENDOR_XILINX
 scripts/config -d FDDI
 scripts/config -d LED_TRIGGER_PHY
 
-#
 # MII PHY device drivers
-#
 scripts/config -d ADIN_PHY
 scripts/config -d MARVELL_88X2222_PHY
 scripts/config -d MICROCHIP_T1_PHY
@@ -382,7 +326,6 @@ scripts/config -d MDIO_GPIO
 scripts/config -d MDIO_MVUSB
 scripts/config -d MDIO_MSCC_MIIM
 scripts/config -d MDIO_THUNDER
-
 scripts/config -d PPP_FILTER
 scripts/config -d PPP_MULTILINK
 scripts/config -d SLIP_COMPRESSED
@@ -413,17 +356,12 @@ scripts/config -d AT76C50X_USB
 scripts/config -d BRCM_TRACING
 scripts/config -d BRCMDBG
 
-#
 # iwl3945 / iwl4965 Debugging Options
-#
 scripts/config -d IWLEGACY_DEBUG
 
-#
 # Debugging Options
-#
 scripts/config -d IWLWIFI_DEBUG
 scripts/config -d IWLWIFI_DEVICE_TRACING
-
 scripts/config -d P54_SPI
 scripts/config -d LIBERTAS_SPI
 scripts/config -d LIBERTAS_MESH
@@ -439,25 +377,19 @@ scripts/config -d RTW89_DEBUGMSG
 scripts/config -d RTW89_DEBUGFS
 scripts/config -d IEEE802154_HWSIM
 
-#
 # Wireless WAN
-#
 scripts/config -d WWAN_DEBUGFS
 scripts/config -d WWAN_HWSIM
 scripts/config -d RPMSG_WWAN_CTRL
 scripts/config -d IOSM
-
 scripts/config -d NETDEVSIM
 scripts/config -d ISDN
 
-#
 # Input device support
-#
 scripts/config -d INPUT_LEDS
 
 #
 # Input Device Drivers
-#
 scripts/config -d KEYBOARD_ADC
 scripts/config -d KEYBOARD_ADP5588
 scripts/config -d KEYBOARD_ADP5589
@@ -534,26 +466,20 @@ scripts/config -d INPUT_DRV2665_HAPTICS
 scripts/config -d INPUT_DRV2667_HAPTICS
 scripts/config -d RMI4_F34
 
-#
 # Hardware I/O ports
-#
 scripts/config -d SERIO_CT82C710
 scripts/config -d SERIO_PARKBD
 scripts/config -d SERIO_PCIPS2
 scripts/config -d SERIO_PS2MULT
 scripts/config -d USERIO
 
-#
 # Serial drivers
-#
 scripts/config -d SERIAL_8250_EXTENDED
 scripts/config -d SERIAL_8250_DFL
 scripts/config -d SERIAL_8250_RT288X
 scripts/config -d SERIAL_8250_MID
 
-#
 # Non-8250 serial port support
-#
 scripts/config -d SERIAL_MAX3100
 scripts/config -d SERIAL_MAX310X
 scripts/config -d SERIAL_UARTLITE
@@ -577,9 +503,7 @@ scripts/config -d TCG_VTPM_PROXY
 scripts/config -d TCG_TIS_ST33ZP24_SPI
 scripts/config -d XILLYUSB
 
-#
 # PC SMBus host controller drivers
-#
 scripts/config -d I2C_ALI1535
 scripts/config -d I2C_ALI1563
 scripts/config -d I2C_ALI15X3
@@ -587,13 +511,7 @@ scripts/config -d I2C_SIS5595
 scripts/config -d I2C_SIS630
 scripts/config -d I2C_ZHAOXIN
 
-#
-# ACPI drivers
-#
-
-#
 # I2C system bus drivers (mostly embedded / system-on-chip)
-#
 scripts/config -d I2C_CBUS_GPIO
 scripts/config -d I2C_EMEV2
 scripts/config -d I2C_GPIO
@@ -601,16 +519,12 @@ scripts/config -d I2C_OCORES
 
 #
 # External I2C/SMBus adapter drivers
-#
 scripts/config -d I2C_CP2615
 scripts/config -d I2C_ROBOTFUZZ_OSIF
 scripts/config -d I2C_TAOS_EVM
-
 scripts/config -d I2C_SLAVE_TESTUNIT
 
-#
 # SPI Master Controller Drivers
-#
 scripts/config -d SPI_ALTERA_DFL
 scripts/config -d SPI_AXI_SPI_ENGINE
 scripts/config -d SPI_BUTTERFLY
@@ -623,41 +537,29 @@ scripts/config -d SPI_OC_TINY
 scripts/config -d SPI_SIFIVE
 scripts/config -d SPI_ZYNQMP_GQSPI
 
-#
 # SPI Protocol Masters
-#
 scripts/config -d SPI_SPIDEV
 scripts/config -d SPI_LOOPBACK_TEST
 scripts/config -d SPI_TLE62X0
 scripts/config -d SPI_SLAVE
 
-#
 # PPS clients support
-#
 scripts/config -d PPS_CLIENT_KTIMER
 
-#
 # PTP clock support
-#
 scripts/config -d PTP_1588_CLOCK_KVM
 scripts/config -d PTP_DFL_TOD
-
 scripts/config -d PINCTRL_MCP23S08
 scripts/config -d PINCTRL_SX150X
-
 scripts/config -d GPIO_SYSFS
 
-#
 # Memory mapped GPIO drivers
-#
 scripts/config -d GPIO_DWAPB
 scripts/config -d GPIO_GENERIC_PLATFORM
 scripts/config -d GPIO_MB86S7X
 scripts/config -d GPIO_AMD_FCH
 
-#
 # Port-mapped I/O GPIO drivers
-#
 scripts/config -d GPIO_VX855
 scripts/config -d GPIO_F7188X
 scripts/config -d GPIO_SCH
@@ -665,63 +567,46 @@ scripts/config -d GPIO_SCH311X
 scripts/config -d GPIO_WINBOND
 scripts/config -d GPIO_WS16C48
 
-#
 # I2C GPIO expanders
-#
 scripts/config -d GPIO_MAX7300
 scripts/config -d GPIO_MAX732X
 scripts/config -d GPIO_PCA953X
 scripts/config -d GPIO_PCF857X
 scripts/config -d GPIO_TPIC2810
 
-#
 # MFD GPIO expanders
-#
 scripts/config -d GPIO_ELKHARTLAKE
 scripts/config -d GPIO_TPS68470
 
-#
 # PCI GPIO expanders
-#
 scripts/config -d GPIO_AMD8111
 scripts/config -d GPIO_ML_IOH
 scripts/config -d GPIO_PCIE_IDIO_24
 scripts/config -d GPIO_RDC321X
 
-#
 # SPI GPIO expanders
-#
 scripts/config -d GPIO_MAX3191X
 scripts/config -d GPIO_MAX7301
 scripts/config -d GPIO_MC33880
 scripts/config -d GPIO_PISOSR
 scripts/config -d GPIO_XRA1403
 
-#
 # Virtual GPIO drivers
-#
 scripts/config -d GPIO_AGGREGATOR
 scripts/config -d GPIO_MOCKUP
 
-#
 # GPIO Debugging utilities
-#
 scripts/config -d GPIO_SLOPPY_LOGIC_ANALYZER
 
-#
 # 1-wire Bus Masters
-#
 scripts/config -d W1_MASTER_MATROX
 scripts/config -d W1_MASTER_GPIO
 scripts/config -d W1_MASTER_SGI
 scripts/config -d W1_MASTER_UART
 
-#
 # 1-wire Slaves
-#
 scripts/config -d W1_SLAVE_DS250X
 scripts/config -d W1_SLAVE_DS28E17
-
 scripts/config -d POWER_RESET
 scripts/config -d POWER_SEQUENCING
 scripts/config -d GENERIC_ADC_BATTERY
@@ -760,9 +645,7 @@ scripts/config -d CHARGER_WILCO
 scripts/config -d BATTERY_UG3105
 scripts/config -d FUEL_GAUGE_MM8013
 
-#
 # Native drivers
-#
 scripts/config -d SENSORS_CORSAIR_CPRO
 scripts/config -d SENSORS_CORSAIR_PSU
 scripts/config -d I8K
@@ -814,21 +697,16 @@ scripts/config -d SENSORS_STTS751
 scripts/config -d SENSORS_SPD5118_DETECT
 scripts/config -d SENSORS_XGENE
 
-#
 # ACPI drivers
-#
 scripts/config -d THERMAL_GOV_POWER_ALLOCATOR
 scripts/config -d DEVFREQ_THERMAL
-
 scripts/config -d GENERIC_ADC_THERMAL
 scripts/config -d WATCHDOG
 scripts/config -d SSB_DRIVER_GPIO
 scripts/config -d BCMA_DRIVER_GMAC_CMN
 scripts/config -d BCMA_DRIVER_GPIO
 
-#
 # Multifunction device drivers
-#
 scripts/config -d MFD_AS3711
 scripts/config -d MFD_SMPRO
 scripts/config -d PMIC_ADP5520
@@ -900,7 +778,6 @@ scripts/config -d MFD_WM8350_I2C
 scripts/config -d MFD_WM8994
 scripts/config -d MFD_ATC260X_I2C
 scripts/config -d RAVE_SP_CORE
-
 scripts/config -d REGULATOR_FIXED_VOLTAGE
 scripts/config -d REGULATOR_VIRTUAL_CONSUMER
 scripts/config -d REGULATOR_USERSPACE_CONSUMER
@@ -951,59 +828,39 @@ scripts/config -d IR_RCMM_DECODER
 scripts/config -d IR_SERIAL_TRANSMITTER
 scripts/config -d IR_TOY
 
-#
 # CEC support
-#
 scripts/config -d CEC_SECO_RC
 scripts/config -d USB_PULSE8_CEC
 scripts/config -d USB_RAINSHADOW_CEC
-
 scripts/config -d MEDIA_SUPPORT_FILTER
 
-#
 # Analog TV USB devices
-#
 scripts/config -d VIDEO_GO7007_USB_S2250_BOARD
 
-#
 # Analog/digital TV USB devices
-#
 scripts/config -d VIDEO_AU0828_RC
 
-#
 # Digital TV USB devices
-#
 scripts/config -d DVB_USB_LME2510
 scripts/config -d DVB_USB
 
-#
 # Software defined radio USB devices
-#
 # Added USB_AIRSPY and USB_HACKRF not found in the CachyOS config
-#
 scripts/config -d USB_AIRSPY
 scripts/config -d USB_HACKRF
 scripts/config -d USB_MSI2500
 
-#
 # Media capture support
-#
 scripts/config -d VIDEO_ZORAN_DC30
 scripts/config -d VIDEO_ZORAN_BUZ
 
-#
 # Media capture/analog TV support
-#
 scripts/config -d VIDEO_FB_IVTV_FORCE_PAT
 
-#
 # Media capture/analog/hybrid TV support
-#
 scripts/config -d VIDEO_COBALT
 
-#
 # Media digital TV PCI Adapters
-#
 scripts/config -d DVB_NETUP_UNIDVB
 scripts/config -d RADIO_TEF6862
 scripts/config -d USB_RAREMONO
@@ -1014,35 +871,25 @@ scripts/config -d SDR_PLATFORM_DRIVERS
 scripts/config -d DVB_PLATFORM_DRIVERS
 scripts/config -d V4L_MEM2MEM_DRIVERS
 
-#
 # Cadence media platform drivers
-#
 scripts/config -d VIDEO_CADENCE_CSI2RX
 scripts/config -d VIDEO_CADENCE_CSI2TX
 
-#
 # Marvell media platform drivers
-#
 scripts/config -d VIDEO_CAFE_CCIC
 
-#
 # MMC/SDIO DVB adapters
-#
 scripts/config -d SMS_SDIO_DRV
 scripts/config -d V4L_TEST_DRIVERS
 scripts/config -d DVB_TEST_DRIVERS
 
-#
 # IR I2C driver auto-selected by 'Autoselect ancillary drivers'
-#
 scripts/config -d VIDEO_IMX208
 scripts/config -d VIDEO_OV2740
 scripts/config -d VIDEO_RDACM21
 scripts/config -d VIDEO_CCS
 
-#
 # Lens drivers
-#
 scripts/config -d VIDEO_AD5820
 scripts/config -d VIDEO_AK7375
 scripts/config -d VIDEO_DW9714
@@ -1050,59 +897,41 @@ scripts/config -d VIDEO_DW9719
 scripts/config -d VIDEO_DW9768
 scripts/config -d VIDEO_DW9807_VCM
 
-#
 # Flash devices
-#
 scripts/config -d VIDEO_ADP1653
 scripts/config -d VIDEO_LM3560
 scripts/config -d VIDEO_LM3646
 
-#
 # Audio decoders, processors and mixers
-#
 scripts/config -d VIDEO_TDA1997X
 scripts/config -d VIDEO_TLV320AIC23B
 
-#
 # SDR tuner chips
-#
 scripts/config -d SDR_MAX2175
 
-#
 # Miscellaneous helper chips
-#
 scripts/config -d VIDEO_I2C
 scripts/config -d VIDEO_ST_MIPID02
 scripts/config -d VIDEO_THS7303
 
-#
 # Media SPI Adapters
-#
 scripts/config -d CXD2880_SPI_DRV
 scripts/config -d VIDEO_GS1662
 
-#
 # Customize TV tuners
-#
 scripts/config -d MEDIA_TUNER_MSI001
 scripts/config -d MEDIA_TUNER_TDA18250
 
-#
 # Graphics support
-#
 scripts/config -d DRM_DEBUG_DP_MST_TOPOLOGY_REFS
 scripts/config -d DRM_DEBUG_MODESET_LOCK
 scripts/config -d DRM_FBDEV_LEAK_PHYS_SMEM
 scripts/config -d DRM_DISPLAY_DP_TUNNEL_STATE_DEBUG
 
-#
 # I2C encoder or helper chips
-#
 scripts/config -d DRM_I2C_NXP_TDA9950
 
-#
 # drm/i915 Debugging
-#
 scripts/config -d DRM_I915_WERROR
 scripts/config -d DRM_I915_REPLAY_GPU_HANGS_API
 scripts/config -d DRM_I915_DEBUG
@@ -1114,22 +943,17 @@ scripts/config -d DRM_I915_SELFTEST
 scripts/config -d DRM_I915_DEBUG_VBLANK_EVADE
 scripts/config -d DRM_I915_DEBUG_WAKEREF
 
-#
 # drm/Xe Debugging
-#
 scripts/config -d DRM_XE_WERROR
 scripts/config -d DRM_XE_DEBUG
 scripts/config -d DRM_XE_DEBUG_VM
 scripts/config -d DRM_XE_DEBUG_SRIOV
 scripts/config -d DRM_XE_DEBUG_MEM
 scripts/config -d DRM_XE_USERPTR_INVAL_INJECT
-
 scripts/config -d DRM_VKMS
 scripts/config -d DRM_GMA500
 
-#
 # Backlight & LCD device support
-#
 scripts/config -d LCD_L4F00242T03
 scripts/config -d LCD_LMS283GF05
 scripts/config -d LCD_LTV350QV
@@ -1150,7 +974,6 @@ scripts/config -d BACKLIGHT_LM3639
 scripts/config -d BACKLIGHT_GPIO
 scripts/config -d BACKLIGHT_LV5207LP
 scripts/config -d BACKLIGHT_BD6107
-
 scripts/config -d SND_UMP_LEGACY_RAWMIDI
 scripts/config -d SND_SEQ_UMP
 scripts/config -d SND_DUMMY
@@ -1166,34 +989,26 @@ scripts/config -d SND_ES1968_RADIO
 scripts/config -d SND_FM801_TEA575X_BOOL
 scripts/config -d SND_MAESTRO3_INPUT
 
-#
 # HD-Audio
-#
 scripts/config -d SND_HDA_INPUT_BEEP
-
 scripts/config -d SND_SPI
 scripts/config -d SND_USB_CAIAQ_INPUT
 scripts/config -d SND_SOC_AMD_RV_RT5682_MACH
 scripts/config -d SND_SOC_AMD_LEGACY_MACH
 scripts/config -d SND_ATMEL_SOC
 scripts/config -d SND_DESIGNWARE_PCM
-
 scripts/config -d SND_SOC_IMG
-
 scripts/config -d SND_SOC_INTEL_SOF_CS42L42_MACH
 scripts/config -d SND_SOC_SOF_NOCODEC_SUPPORT
 scripts/config -d SND_SOC_SOF_STRICT_ABI_CHECKS
 scripts/config -d SND_SOC_SOF_DEBUG
 scripts/config -d SND_SOC_SOF_AMD_RENOIR
-
 scripts/config -d SND_SOC_XILINX_I2S
 scripts/config -d SND_SOC_XILINX_AUDIO_FORMATTER
 scripts/config -d SND_SOC_XILINX_SPDIF
 scripts/config -d SND_SOC_XTFPGA_I2S
 
-#
 # CODEC drivers
-#
 scripts/config -d SND_SOC_ADAU1701
 scripts/config -d SND_SOC_AK4104
 scripts/config -d SND_SOC_AK4118
@@ -1288,9 +1103,7 @@ scripts/config -d SND_SOC_LPASS_VA_MACRO
 scripts/config -d SND_SOC_LPASS_RX_MACRO
 scripts/config -d SND_SOC_LPASS_TX_MACRO
 
-#
 # Special HID drivers
-#
 scripts/config -d HID_ACRUX_FF
 scripts/config -d HID_MACALLY
 scripts/config -d DRAGONRISE_FF
@@ -1315,17 +1128,12 @@ scripts/config -d SMARTJOYPLUS_FF
 scripts/config -d HID_TOPRE
 scripts/config -d THRUSTMASTER_FF
 scripts/config -d ZEROPLUS_FF
-
 scripts/config -d USB_LED_TRIG
 
-#
 # Miscellaneous USB options
-#
 scripts/config -d USB_OTG_DISABLE_EXTERNAL_HUB
 
-#
 # USB Host Controller Drivers
-#
 scripts/config -d USB_C67X00_HCD
 scripts/config -d USB_XHCI_DBGCAP
 scripts/config -d USB_EHCI_FSL
@@ -1334,14 +1142,10 @@ scripts/config -d USB_ISP116X_HCD
 scripts/config -d USB_R8A66597_HCD
 scripts/config -d USB_HCD_SSB
 
-#
 # USB Imaging devices
-#
 scripts/config -d USBIP_VUDC
 
-#
 # USB dual-mode controller drivers
-#
 scripts/config -d USB_CDNS3_GADGET
 scripts/config -d USB_CDNS3_HOST
 scripts/config -d USB_CDNSP_PCI
@@ -1351,24 +1155,18 @@ scripts/config -d USB_DWC2
 scripts/config -d USB_CHIPIDEA
 scripts/config -d USB_ISP1760
 
-#
 # USB Miscellaneous drivers
-#
 scripts/config -d USB_CYPRESS_CY7C63
 scripts/config -d USB_CYTHERM
 scripts/config -d USB_TEST
 scripts/config -d USB_EHSET_TEST_FIXTURE
 scripts/config -d USB_LINK_LAYER_TEST
 
-#
 # USB Physical Layer drivers
-#
 scripts/config -d USB_GPIO_VBUS
 scripts/config -d USB_ISP1301
 
-#
 # USB Peripheral Controller
-#
 scripts/config -d USB_GR_UDC
 scripts/config -d USB_R8A66597
 scripts/config -d USB_PXA27X
@@ -1382,12 +1180,9 @@ scripts/config -d USB_NET2280
 scripts/config -d USB_GOKU
 scripts/config -d USB_EG20T
 scripts/config -d USB_DUMMY_HCD
-
 scripts/config -d USB_CONFIGFS
 
-#
 # USB Gadget precomposed configurations
-#
 scripts/config -d USB_ZERO
 scripts/config -d USB_ETH
 scripts/config -d USB_G_NCM
@@ -1403,20 +1198,14 @@ scripts/config -d USB_G_ACM_MS
 scripts/config -d USB_G_MULTI
 scripts/config -d USB_G_DBGP
 scripts/config -d USB_G_WEBCAM
-
 scripts/config -d TYPEC_TCPCI_MAXIM
 scripts/config -d TYPEC_STUSB160X
 
-#
 # USB Type-C Multiplexer/DeMultiplexer Switch support
-#
 scripts/config -d TYPEC_MUX_WCD939X_USBSS
-
 scripts/config -d MMC_TEST
 
-#
 # MMC/SD/SDIO Host Controller Drivers
-#
 scripts/config -d MMC_ALCOR
 scripts/config -d MMC_SPI
 scripts/config -d MMC_USDHI6ROL0
@@ -1424,20 +1213,14 @@ scripts/config -d MMC_MTK
 scripts/config -d SCSI_UFS_HWMON
 scripts/config -d SCSI_UFSHCD_PLATFORM
 
-#
 # MemoryStick drivers
-#
 scripts/config -d MS_BLOCK
 
-#
 # MemoryStick Host Controller Drivers
-#
 scripts/config -d LEDS_CLASS_MULTICOLOR
 scripts/config -d LEDS_BRIGHTNESS_HW_CHANGED
 
-#
 # LED drivers
-#
 scripts/config -d LEDS_CHT_WCOVE
 scripts/config -d LEDS_LM3642
 scripts/config -d LEDS_PCA9532_GPIO
@@ -1453,23 +1236,17 @@ scripts/config -d LEDS_TCA6507
 scripts/config -d LEDS_TLC591XX
 scripts/config -d LEDS_LM355x
 
-#
 # LED Triggers
-#
 scripts/config -d LEDS_TRIGGER_DISK
 scripts/config -d LEDS_TRIGGER_MTD
 scripts/config -d LEDS_TRIGGER_CPU
 
-#
 # iptables trigger is under Netfilter config (LED target)
-#
 scripts/config -d LEDS_TRIGGER_PANIC
 scripts/config -d LEDS_TRIGGER_PATTERN
 scripts/config -d LEDS_TRIGGER_INPUT_EVENTS
 
-#
 # Simple LED drivers
-#
 scripts/config -d LEDS_SIEMENS_SIMATIC_IPC_APOLLOLAKE
 scripts/config -d ACCESSIBILITY
 scripts/config -d INFINIBAND_IRDMA
@@ -1481,14 +1258,10 @@ scripts/config -d RTC_HCTOSYS
 scripts/config -d RTC_SYSTOHC
 scripts/config -d RTC_NVMEM
 
-#
 # RTC interfaces
-#
 scripts/config -d RTC_INTF_DEV_UIE_EMUL
 
-#
 # I2C RTC drivers
-#
 scripts/config -d RTC_DRV_ABB5ZES3
 scripts/config -d RTC_DRV_ABEOZ9
 scripts/config -d RTC_DRV_DS1307_CENTURY
@@ -1501,83 +1274,56 @@ scripts/config -d RTC_DRV_RV3032
 scripts/config -d RTC_DRV_RV8803
 scripts/config -d RTC_DRV_SD3078
 
-#
 # SPI RTC drivers
-#
 scripts/config -d RTC_DRV_DS1302
 
-#
 # SPI and I2C RTC drivers
-#
 scripts/config -d RTC_DRV_RX6110
 
-#
 # Platform RTC drivers
-#
 scripts/config -d RTC_DRV_M48T86
 
-#
 # on-CPU RTC drivers
-#
 scripts/config -d RTC_DRV_FTRTC010
 
-#
 # DMA Devices
-#
 scripts/config -d XILINX_DMA
 scripts/config -d QCOM_HIDMA_MGMT
 scripts/config -d QCOM_HIDMA
 
-#
 # DMA Clients
-#
 scripts/config -d ASYNC_TX_DMA
 
-#
 # DMABUF options
-#
 scripts/config -d DMABUF_HEAPS
 scripts/config -d DMABUF_SYSFS_STATS
-
 scripts/config -d UIO_PDRV_GENIRQ
 scripts/config -d UIO_DMEM_GENIRQ
 scripts/config -d UIO_NETX
 scripts/config -d UIO_MF624
 scripts/config -d VFIO_DEBUGFS
-
 scripts/config -d NITRO_ENCLAVES
 scripts/config -d VIRTIO_MMIO_CMDLINE_DEVICES
 scripts/config -d VIRTIO_DEBUG
 scripts/config -d SNET_VDPA
 scripts/config -d OCTEONEP_VDPA
 
-#
 # Accelerometers
-#
 scripts/config -d ADIS16203
 scripts/config -d ADIS16240
 
-#
 # Analog to digital converters
-#
 scripts/config -d AD7816
 
-#
 # Analog digital bi-direction converters
-#
 scripts/config -d ADT7316
 
-#
 # Direct Digital Synthesis
-#
 scripts/config -d AD9832
 scripts/config -d AD9834
 
-#
 # Network Analyzer, Impedance Converters
-#
 scripts/config -d AD5933
-
 scripts/config -d STAGING_MEDIA
 scripts/config -d LTE_GDM724X
 scripts/config -d CROS_EC_DEBUGFS
@@ -1591,7 +1337,6 @@ scripts/config -d ADV_SWBUTTON
 scripts/config -d DELL_WMI_PRIVACY
 scripts/config -d IBM_RTL
 scripts/config -d INTEL_ATOMISP2_LED
-
 scripts/config -d INTEL_BYTCRC_PWRSRC
 scripts/config -d INTEL_CHTWC_INT33FE
 scripts/config -d PCENGINES_APU2
@@ -1606,30 +1351,20 @@ scripts/config -d COMMON_CLK_CDCE706
 scripts/config -d COMMON_CLK_CS2000_CP
 scripts/config -d COMMON_CLK_PWM
 scripts/config -d HWSPINLOCK
-
 scripts/config -d ALTERA_MBOX
 
-#
 # Remoteproc drivers
-#
 scripts/config -d REMOTEPROC_CDEV
 
-#
 # Rpmsg drivers
-#
 scripts/config -d RPMSG_CHAR
 scripts/config -d RPMSG_QCOM_GLINK_RPM
 
-#
 # Qualcomm SoC drivers
-#
 scripts/config -d QCOM_PMIC_PDCHARGER_ULOG
-
 scripts/config -d SOC_TI
 
-#
 # Extcon Device Drivers
-#
 scripts/config -d EXTCON_ADC_JACK
 scripts/config -d EXTCON_GPIO
 scripts/config -d EXTCON_MAX3355
@@ -1640,9 +1375,7 @@ scripts/config -d EXTCON_USB_GPIO
 scripts/config -d MEMORY
 scripts/config -d IIO_TRIGGERED_EVENT
 
-#
 # Accelerometers
-#
 scripts/config -d ADIS16201
 scripts/config -d ADIS16209
 scripts/config -d ADXL345_I2C
@@ -1668,9 +1401,7 @@ scripts/config -d SCA3300
 scripts/config -d STK8312
 scripts/config -d STK8BA50
 
-#
 # Analog to digital converters
-#
 scripts/config -d AD7091R5
 scripts/config -d AD7091R8
 scripts/config -d AD7124
@@ -1726,21 +1457,15 @@ scripts/config -d TI_TSC2046
 scripts/config -d VIPERBOARD_ADC
 scripts/config -d XILINX_XADC
 
-#
 # Amplifiers
-#
 scripts/config -d AD8366
 scripts/config -d HMC425
 
-#
 # Capacitance to digital converters
-#
 scripts/config -d AD7150
 scripts/config -d AD7746
 
-#
 # Chemical Sensors
-#
 scripts/config -d AOSONG_AGS02MA
 scripts/config -d ATLAS_PH_SENSOR
 scripts/config -d ATLAS_EZO_SENSOR
@@ -1754,9 +1479,7 @@ scripts/config -d SPS30_I2C
 scripts/config -d SPS30_SERIAL
 scripts/config -d VZ89X
 
-#
 # Digital to analog converters
-#
 scripts/config -d AD5064
 scripts/config -d AD5360
 scripts/config -d AD5380
@@ -1789,20 +1512,14 @@ scripts/config -d TI_DAC5571
 scripts/config -d TI_DAC7311
 scripts/config -d TI_DAC7612
 
-#
 # Clock Generator/Distribution
-#
 scripts/config -d AD9523
 
-#
 # Phase-Locked Loop (PLL) frequency synthesizers
-#
 scripts/config -d ADF4350
 scripts/config -d ADF4371
 
-#
 # Digital gyroscope sensors
-#
 scripts/config -d ADIS16080
 scripts/config -d ADIS16130
 scripts/config -d ADIS16136
@@ -1813,16 +1530,12 @@ scripts/config -d BMG160
 scripts/config -d FXAS21002C
 scripts/config -d ITG3200
 
-#
 # Heart Rate Monitors
-#
 scripts/config -d AFE4403
 scripts/config -d AFE4404
 scripts/config -d MAX30102
 
-#
 # Humidity sensors
-#
 scripts/config -d AM2315
 scripts/config -d HDC100X
 scripts/config -d HDC2010
@@ -1831,9 +1544,7 @@ scripts/config -d HTU21
 scripts/config -d SI7005
 scripts/config -d SI7020
 
-#
 # Inertial measurement units
-#
 scripts/config -d ADIS16400
 scripts/config -d ADIS16460
 scripts/config -d ADIS16475
@@ -1851,9 +1562,7 @@ scripts/config -d INV_MPU6050_SPI
 scripts/config -d IIO_ST_LSM6DSX
 scripts/config -d IIO_ST_LSM9DS0
 
-#
 # Light sensors
-#
 scripts/config -d ADJD_S311
 scripts/config -d ADUX1020
 scripts/config -d AL3010
@@ -1888,9 +1597,7 @@ scripts/config -d VCNL4035
 scripts/config -d VEML6030
 scripts/config -d VEML6070
 
-#
 # Magnetometer sensors
-#
 scripts/config -d BMC150_MAGN_I2C
 scripts/config -d BMC150_MAGN_SPI
 scripts/config -d MAG3110
@@ -1901,14 +1608,10 @@ scripts/config -d SENSORS_RM3100_I2C
 scripts/config -d SENSORS_RM3100_SPI
 scripts/config -d YAMAHA_YAS530
 
-#
 # Triggers - standalone
-#
 scripts/config -d IIO_HRTIMER_TRIGGER
 
-#
 # Digital potentiometers
-#
 scripts/config -d DS1803
 scripts/config -d MAX5432
 scripts/config -d MAX5481
@@ -1919,9 +1622,7 @@ scripts/config -d MCP41010
 scripts/config -d TPL0102
 scripts/config -d X9250
 
-#
 # Pressure sensors
-#
 scripts/config -d DLHL60D
 scripts/config -d DPS310
 scripts/config -d HP03
@@ -1938,14 +1639,10 @@ scripts/config -d T5403
 scripts/config -d HP206C
 scripts/config -d ZPA2326
 
-#
 # Lightning sensors
-#
 scripts/config -d AS3935
 
-#
 # Proximity and distance sensors
-#
 scripts/config -d IRSD200
 scripts/config -d ISL29501
 scripts/config -d LIDAR_LITE_V2
@@ -1957,16 +1654,12 @@ scripts/config -d SX9500
 scripts/config -d SRF08
 scripts/config -d VCNL3020
 
-#
 # Resolver to digital converters
-#
 scripts/config -d AD2S90
 scripts/config -d AD2S1200
 scripts/config -d AD2S1210
 
-#
 # Temperature sensors
-#
 scripts/config -d LTC2983
 scripts/config -d MLX90635
 scripts/config -d TMP006
@@ -1976,45 +1669,31 @@ scripts/config -d TSYS01
 scripts/config -d TSYS02D
 scripts/config -d MAX31856
 scripts/config -d MCP9600
-
 scripts/config -d PWM_PCA9685
 
-#
 # IRQ chip support
-#
 scripts/config -d LAN966X_OIC
-
 scripts/config -d IPACK_BUS
 scripts/config -d RESET_GPIO
 scripts/config -d RESET_SIMPLE
 scripts/config -d RESET_TI_SYSCON
 
-#
 # PHY Subsystem
-#
 scripts/config -d USB_LGM_PHY
 scripts/config -d PHY_CAN_TRANSCEIVER
 
-#
 # PHY drivers for Broadcom platforms
-#
 scripts/config -d BCM_KONA_USB2_PHY
-
 scripts/config -d PHY_PXA_28NM_HSIC
 scripts/config -d PHY_PXA_28NM_USB2
 scripts/config -d PHY_QCOM_USB_HS
 scripts/config -d PHY_QCOM_USB_HSIC
 scripts/config -d PHY_TUSB1210
-
 scripts/config -d MCB
 
-#
 # HW tracing support
-#
 scripts/config -d STM
-
 scripts/config -d FPGA_MGR_XILINX_SELECTMAP
-
 scripts/config -d SIOX
 scripts/config -d SLIMBUS
 scripts/config -d INTERCONNECT
@@ -2022,51 +1701,42 @@ scripts/config -d INTEL_QEP
 scripts/config -d INTERRUPT_CNT
 scripts/config -d MOST
 
-#
 # File systems
-#
 scripts/config -d REISERFS_FS
 scripts/config -d JFS_FS
-scripts/config -d XFS_SUPPORT_ASCII_CI
-scripts/config -d XFS_ONLINE_SCRUB
+#scripts/config -d XFS_SUPPORT_ASCII_CI
+#scripts/config -d XFS_ONLINE_SCRUB
 scripts/config -d GFS2_FS
 scripts/config -d OCFS2_FS
 scripts/config -d NILFS2_FS
-scripts/config -d F2FS_FS_SECURITY
-scripts/config -d F2FS_CHECK_FS
-scripts/config -d F2FS_FS_COMPRESSION
-scripts/config -d F2FS_IOSTAT
-scripts/config -d F2FS_UNFAIR_RWSEM
+#scripts/config -d F2FS_FS_SECURITY
+#scripts/config -d F2FS_CHECK_FS
+#scripts/config -d F2FS_FS_COMPRESSION
+#scripts/config -d F2FS_IOSTAT
+#scripts/config -d F2FS_UNFAIR_RWSEM
 scripts/config -d BCACHEFS_QUOTA
 scripts/config -d BCACHEFS_POSIX_ACL
 scripts/config -d BCACHEFS_LOCK_TIME_STATS
 scripts/config -d ZONEFS_FS
-scripts/config -d FS_VERITY
-scripts/config -d QUOTA
-scripts/config -d OVERLAY_FS_REDIRECT_DIR
-scripts/config -d OVERLAY_FS_INDEX
-scripts/config -d OVERLAY_FS_XINO_AUTO
-scripts/config -d OVERLAY_FS_METACOPY
+#scripts/config -d FS_VERITY
+#scripts/config -d QUOTA
+#scripts/config -d OVERLAY_FS_REDIRECT_DIR
+#scripts/config -d OVERLAY_FS_INDEX
+#scripts/config -d OVERLAY_FS_XINO_AUTO
+#scripts/config -d OVERLAY_FS_METACOPY
 
-#
 # Caches
-#
 scripts/config -d NETFS_STATS
 scripts/config -d NETFS_DEBUG
 scripts/config -d FSCACHE_STATS
 scripts/config -d CACHEFILES_ONDEMAND
 
-#
 # DOS/FAT/EXFAT/NT Filesystems
-#
 scripts/config -d MSDOS_FS
 
-#
 # Pseudo filesystems
-#
 scripts/config -d PROC_KCORE
 scripts/config -d TMPFS_QUOTA
-
 scripts/config -d ORANGEFS_FS
 scripts/config -d AFFS_FS
 scripts/config -d HFS_FS
@@ -2103,26 +1773,17 @@ scripts/config -d 9P_FSCACHE
 scripts/config -d 9P_FS_SECURITY
 scripts/config -d DLM_DEBUG
 
-#
 # Crypto core or helper
-#
 scripts/config -d CRYPTO_FIPS
 scripts/config -d CRYPTO_MANAGER_DISABLE_TESTS
 scripts/config -d CRYPTO_MANAGER_EXTRA_TESTS
 
-#
 # Length-preserving ciphers and modes
-#
 scripts/config -d CRYPTO_ADIANTUM
 scripts/config -d CRYPTO_HCTR2
 
-#
 # AEAD (authenticated encryption with associated data) ciphers
-#
 scripts/config -d CRYPTO_AEGIS128
 
-#
 # Hashes, digests, and MACs
-#
 scripts/config -d CRYPTO_RMD160
-
