@@ -47,6 +47,7 @@ https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0131-add
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0135-initcall-only-print-non-zero-initcall-debug-to-speed.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0136-crypto-kdf-make-the-module-init-call-a-late-init-cal.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0158-clocksource-only-perform-extended-clocksource-checks.patch
+https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0164-KVM-VMX-make-vmx-init-a-late-init-call-to-get-to-ini.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0167-net-sock-increase-default-number-of-_SK_MEM_PACKETS-.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0173-cpuidle-psd-add-power-sleep-demotion-prevention-for-.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0174-memcg-increase-MEMCG_CHARGE_BATCH-to-128.patch
