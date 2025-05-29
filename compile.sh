@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+set -e
+
+modprobed-db store
+
 make scripts
 
 scripts/config -e CACHY
