@@ -26,14 +26,6 @@ Performance gains:
       Single thread: 111 MiB/s
       4 threads:     139 MiB/s  (+25%)
 
-Signed-off-by: Kundan Kumar <kundan.kumar@samsung.com>
-Signed-off-by: Anuj Gupta <anuj20.g@samsung.com>
----
- fs/fs-writeback.c                | 49 ++++++++++++++++++++++++++------
- include/linux/backing-dev-defs.h | 10 ++++++-
- mm/backing-dev.c                 | 16 ++++++++---
- 3 files changed, 62 insertions(+), 13 deletions(-)
-
 diff --git a/fs/fs-writeback.c b/fs/fs-writeback.c
 index cc57367fb641..761423b5cc1e 100644
 --- a/fs/fs-writeback.c
