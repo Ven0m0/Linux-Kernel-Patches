@@ -14,6 +14,11 @@ cd "$1" || { echo "Directory not found: $1"; exit 1; }
 #     --set-val option value   Set option to value
 #     --undefine | -u option   Undefine option
 
+
+
+
+scripts/config -e LD_DEAD_CODE_DATA_ELIMINATION
+
 ### Answer unconfigured (NEW) kernel options in the CachyOS config.
 scripts/config -d DRM_MGAG200_DISABLE_WRITECOMBINE
 scripts/config -d GPIO_BT8XX
