@@ -10,9 +10,6 @@ scripts/config -d GPIO_BT8XX
 scripts/config -d INTEL_TDX_HOST
 scripts/config -d SND_SE6X
 
-
-
-
 scripts/config -e HAVE_LD_DEAD_CODE_DATA_ELIMINATION
 scripts/config -e LD_DEAD_CODE_DATA_ELIMINATION
 scripts/config -d COMPILE_TEST
