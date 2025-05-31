@@ -54,7 +54,6 @@ https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0164-KVM
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0167-net-sock-increase-default-number-of-_SK_MEM_PACKETS-.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0173-cpuidle-psd-add-power-sleep-demotion-prevention-for-.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0174-memcg-increase-MEMCG_CHARGE_BATCH-to-128.patch
-https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/ratelimit-sched-yield.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/libsgrowdown.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/epp-retune.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/scale-net-alloc.patch
