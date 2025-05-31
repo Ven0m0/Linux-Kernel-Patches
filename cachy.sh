@@ -9,6 +9,8 @@ scripts/config -d INTEL_TDX_HOST
 scripts/config -d SND_SE6X
 
 scripts/config -e LD_DEAD_CODE_DATA_ELIMINATION
+scripts/config -d COMPILE_TEST
+scripts/config -e POLLY_CLANG
 
 ### Disable memory hotplug not needed for desktop use.
 scripts/config -d MEMORY_HOTPLUG
