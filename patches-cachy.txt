@@ -32,8 +32,19 @@ https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.1
 https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.15/t2-patches-v2-sep/0061-iommu-vt-d-Eliminate-pci_physfn-in-dmar_find_matched.patch
 https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.15/zram-parallel-patches/0001-zram-parallel-patches.patch
 https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.15/zram-kcompressd-patches/0001-zram-kcompressd-patches.patch
+https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.15/parallel-swapper-patches/0001-linux6.15.0-parallel-swapper-v0.2.patch
 
+# Experimental clear linux
+https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0010-sched-Remove-the-limitation-of-WF_ON_CPU-on-wakelist.patch
+https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/vmidle.patch
+https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0009-sched-Fix-the-check-of-nr_running-at-queue-wakelist.patch
+https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0118-add-scheduler-turbo3-patch.patch
+https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0127-lib-raid6-add-patch.patch
+https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0166-sched-fair-remove-upper-limit-on-cpu-number.patch
+https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/better_idle_balance.patch
+https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/nonapi-realtek.patch
 
+# Pollrate
 https://raw.githubusercontent.com/marioroy/cachymod/refs/heads/main/linux-cachymod-6.14/1010-usb-pollrate.patch
 https://raw.githubusercontent.com/GloriousEggroll/Linux-Pollrate-Patch/refs/heads/main/pollrate.patch
 
