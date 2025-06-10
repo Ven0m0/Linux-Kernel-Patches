@@ -1,0 +1,89 @@
+From: Barry Song <v-songbaohua@oppo.com>
+Subject: mm: madvise: use walk_page_range_vma() instead of walk_page_range()
+Date: Thu, 5 Jun 2025 20:31:44 +1200
+
+We've already found the VMA within madvise_walk_vmas() before calling
+specific madvise behavior functions like madvise_free_single_vma().  So
+calling walk_page_range() and doing find_vma() again seems unnecessary. 
+It also prevents potential optimizations in those madvise callbacks,
+particularly the use of dedicated per-VMA locking.
+
+Link: https://lkml.kernel.org/r/20250605083144.43046-1-21cnbao@gmail.com
+Signed-off-by: Barry Song <v-songbaohua@oppo.com>
+Reviewed-by: Anshuman Khandual <anshuman.khandual@arm.com>
+Reviewed-by: Lorenzo Stoakes <lorenzo.stoakes@oracle.com>
+Acked-by: David Hildenbrand <david@redhat.com>
+Reviewed-by: Oscar Salvador <osalvador@suse.de>
+Reviewed-by: Harry Yoo <harry.yoo@oracle.com>
+Reviewed-by: Dev Jain <dev.jain@arm.com>
+Reviewed-by: Vlastimil Babka <vbabka@suse.cz>
+Reviewed-by: Ryan Roberts <ryan.roberts@arm.com>
+Tested-by: Lorenzo Stoakes <lorenzo.stoakes@oracle.com>
+Cc: "Liam R. Howlett" <Liam.Howlett@oracle.com>
+Cc: Jann Horn <jannh@google.com>
+Cc: Suren Baghdasaryan <surenb@google.com>
+Cc: Lokesh Gidra <lokeshgidra@google.com>
+Cc: Tangquan Zheng <zhengtangquan@oppo.com>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+
+ mm/madvise.c |   12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+--- a/mm/madvise.c~mm-madvise-use-walk_page_range_vma-instead-of-walk_page_range
++++ a/mm/madvise.c
+@@ -282,7 +282,7 @@ static long madvise_willneed(struct vm_a
+ 	*prev = vma;
+ #ifdef CONFIG_SWAP
+ 	if (!file) {
+-		walk_page_range(vma->vm_mm, start, end, &swapin_walk_ops, vma);
++		walk_page_range_vma(vma, start, end, &swapin_walk_ops, vma);
+ 		lru_add_drain(); /* Push any new pages onto the LRU now */
+ 		return 0;
+ 	}
+@@ -582,7 +582,7 @@ static void madvise_cold_page_range(stru
+ 	};
+ 
+ 	tlb_start_vma(tlb, vma);
+-	walk_page_range(vma->vm_mm, addr, end, &cold_walk_ops, &walk_private);
++	walk_page_range_vma(vma, addr, end, &cold_walk_ops, &walk_private);
+ 	tlb_end_vma(tlb, vma);
+ }
+ 
+@@ -620,7 +620,7 @@ static void madvise_pageout_page_range(s
+ 	};
+ 
+ 	tlb_start_vma(tlb, vma);
+-	walk_page_range(vma->vm_mm, addr, end, &cold_walk_ops, &walk_private);
++	walk_page_range_vma(vma, addr, end, &cold_walk_ops, &walk_private);
+ 	tlb_end_vma(tlb, vma);
+ }
+ 
+@@ -827,7 +827,7 @@ static int madvise_free_single_vma(struc
+ 
+ 	mmu_notifier_invalidate_range_start(&range);
+ 	tlb_start_vma(tlb, vma);
+-	walk_page_range(vma->vm_mm, range.start, range.end,
++	walk_page_range_vma(vma, range.start, range.end,
+ 			&madvise_free_walk_ops, tlb);
+ 	tlb_end_vma(tlb, vma);
+ 	mmu_notifier_invalidate_range_end(&range);
+@@ -1162,7 +1162,7 @@ static long madvise_guard_install(struct
+ 		unsigned long nr_pages = 0;
+ 
+ 		/* Returns < 0 on error, == 0 if success, > 0 if zap needed. */
+-		err = walk_page_range_mm(vma->vm_mm, start, end,
++		err = walk_page_range_vma(vma, start, end,
+ 					 &guard_install_walk_ops, &nr_pages);
+ 		if (err < 0)
+ 			return err;
+@@ -1246,7 +1246,7 @@ static long madvise_guard_remove(struct
+ 	if (!is_valid_guard_vma(vma, /* allow_locked = */true))
+ 		return -EINVAL;
+ 
+-	return walk_page_range(vma->vm_mm, start, end,
++	return walk_page_range_vma(vma, start, end,
+ 			       &guard_remove_walk_ops, NULL);
+ }
+ 
+_

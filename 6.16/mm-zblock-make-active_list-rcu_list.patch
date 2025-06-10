@@ -1,0 +1,154 @@
+From: Vitaly Wool <vitaly.wool@konsulko.se>
+Subject: mm/zblock: make active_list rcu_list
+Date: Thu, 8 May 2025 14:29:25 +0200
+
+Since it is okay for several concurrent threads to have read access to the
+active_list's head for slot reservation, make active_list rcu_list.  This
+improves performance for heavy multi-thread loads.
+
+E. g. for 'make -j55 bzImage' on a 12-core Ryzen:
+* before:
+real	8m52.194s
+user	41m9.743s
+sys	36m08.622s
+Zswap:            303520 kB
+Zswapped:         802004 kB
+zswpin 18434225
+zswpout 42848557
+
+* after:
+real	8m25.244s
+user	40m10.184s
+sys	31m55.413s
+Zswap:            311020 kB
+Zswapped:         842396 kB
+zswpin 16984983
+zswpout 38587329
+
+* zsmalloc (for comparison):
+real	9m5.550s
+user	41m30.424s
+sys	38m27.165s
+Zswap:            204044 kB
+Zswapped:         838176 kB
+zswpin 20213653
+zswpout 45038266
+
+Link: https://lkml.kernel.org/r/20250508122925.2600217-1-vitaly.wool@konsulko.se
+Signed-off-by: Vitaly Wool <vitaly.wool@konsulko.se>
+Tested-by: Igor Belousov <igor.b@beldev.am>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+
+ mm/zblock.c |   34 ++++++++++++++++++++--------------
+ mm/zblock.h |    2 ++
+ 2 files changed, 22 insertions(+), 14 deletions(-)
+
+--- a/mm/zblock.c~mm-zblock-make-active_list-rcu_list
++++ a/mm/zblock.c
+@@ -18,10 +18,10 @@
+ 
+ #include <linux/atomic.h>
+ #include <linux/debugfs.h>
+-#include <linux/list.h>
+ #include <linux/mm.h>
+ #include <linux/module.h>
+ #include <linux/preempt.h>
++#include <linux/rcupdate.h>
+ #include <linux/slab.h>
+ #include <linux/spinlock.h>
+ #include <linux/vmalloc.h>
+@@ -53,13 +53,20 @@ static inline struct zblock_block *find_
+ {
+ 	struct list_head *l = &b->active_list;
+ 	unsigned int slot;
++	struct zblock_block *z;
+ 
+-	spin_lock(&b->lock);
+-	if (likely(!list_empty(l))) {
+-		struct zblock_block *z = list_first_entry(l, typeof(*z), link);
+-
++	rcu_read_lock();
++retry_claim:
++	z = list_first_or_null_rcu(l, typeof(*z), link);
++	if (z) {
++		spin_lock(&b->lock);
++		if (unlikely(!z->free_slots)) {
++			spin_unlock(&b->lock);
++			goto retry_claim;
++		}
+ 		if (--z->free_slots == 0)
+-			__list_del_clearprev(&z->link);
++			list_bidir_del_rcu(&z->link);
++		spin_unlock(&b->lock);
+ 		/*
+ 		 * There is a slot in the block and we just made sure it will
+ 		 * remain.
+@@ -74,13 +81,11 @@ static inline struct zblock_block *find_
+ 			if (!test_and_set_bit(slot, z->slot_info))
+ 				break;
+ 		}
+-		spin_unlock(&b->lock);
+ 
+ 		*handle = metadata_to_handle(z, slot);
+-		return z;
+ 	}
+-	spin_unlock(&b->lock);
+-	return NULL;
++	rcu_read_unlock();
++	return z;
+ }
+ 
+ /*
+@@ -100,6 +105,7 @@ static struct zblock_block *alloc_block(
+ 		return NULL;
+ 
+ 	/* init block data */
++	init_rcu_head(&block->rcu);
+ 	block->block_type = block_type;
+ 	block->free_slots = block_desc[block_type].slots_per_block - 1;
+ 	memset(&block->slot_info, 0, sizeof(block->slot_info));
+@@ -107,7 +113,7 @@ static struct zblock_block *alloc_block(
+ 	*handle = metadata_to_handle(block, 0);
+ 
+ 	spin_lock(&block_list->lock);
+-	list_add(&block->link, &block_list->active_list);
++	list_add_rcu(&block->link, &block_list->active_list);
+ 	block_list->block_count++;
+ 	spin_unlock(&block_list->lock);
+ 	return block;
+@@ -263,12 +269,12 @@ static void zblock_free(struct zblock_po
+ 	/* if all slots in block are empty delete the whole block */
+ 	if (++block->free_slots == block_desc[block_type].slots_per_block) {
+ 		block_list->block_count--;
+-		__list_del_clearprev(&block->link);
++		list_bidir_del_rcu(&block->link);
+ 		spin_unlock(&block_list->lock);
+-		vfree(block);
++		kvfree_rcu(block, rcu);
+ 		return;
+ 	} else if (block->free_slots == 1)
+-		list_add(&block->link, &block_list->active_list);
++		list_add_tail_rcu(&block->link, &block_list->active_list);
+ 	spin_unlock(&block_list->lock);
+ }
+ 
+--- a/mm/zblock.h~mm-zblock-make-active_list-rcu_list
++++ a/mm/zblock.h
+@@ -8,6 +8,7 @@
+ 
+ #include <linux/mm.h>
+ #include <linux/rbtree.h>
++#include <linux/rculist.h>
+ #include <linux/types.h>
+ 
+ #if PAGE_SIZE == 0x1000
+@@ -42,6 +43,7 @@
+ struct zblock_block {
+ 	DECLARE_BITMAP(slot_info, 1 << SLOT_BITS);
+ 	struct list_head link;
++	struct rcu_head rcu;
+ 	unsigned short block_type;
+ 	unsigned short free_slots;
+ };
+_

@@ -1,0 +1,113 @@
+From: Kuan-Wei Chiu <visitorckw@gmail.com>
+Subject: lib/math/gcd: use static key to select implementation at runtime
+Date: Fri, 6 Jun 2025 21:47:56 +0800
+
+Patch series "Optimize GCD performance on RISC-V by selecting
+implementation at runtime", v3.
+
+On platforms like RISC-V, the compiler may generate hardware FFS
+instructions even if the underlying CPU does not actually support them. 
+Currently, the GCD implementation is chosen at compile time based on
+CONFIG_CPU_NO_EFFICIENT_FFS, which can result in suboptimal behavior on
+such systems.
+
+Introduce a static key, efficient_ffs_key, to enable runtime selection
+between the binary GCD (using ffs) and the odd-even GCD implementation. 
+This allows the kernel to default to the faster binary GCD when FFS is
+efficient, while retaining the ability to fall back when needed.
+
+Link: https://lkml.kernel.org/r/20250606134758.1308400-1-visitorckw@gmail.com
+Link: https://lkml.kernel.org/r/20250606134758.1308400-2-visitorckw@gmail.com
+Co-developed-by: Yu-Chun Lin <eleanor15x@gmail.com>
+Signed-off-by: Yu-Chun Lin <eleanor15x@gmail.com>
+Signed-off-by: Kuan-Wei Chiu <visitorckw@gmail.com>
+Cc: Albert Ou <aou@eecs.berkeley.edu>
+Cc: Alexandre Ghiti <alex@ghiti.fr>
+Cc: Ching-Chun (Jim) Huang <jserv@ccns.ncku.edu.tw>
+Cc: Palmer Dabbelt <palmer@dabbelt.com>
+Cc: Paul Walmsley <paul.walmsley@sifive.com>
+Cc: Yu-Chun Lin <eleanor15x@gmail.com>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+
+ include/linux/gcd.h |    3 +++
+ lib/math/gcd.c      |   27 +++++++++++++++------------
+ 2 files changed, 18 insertions(+), 12 deletions(-)
+
+--- a/include/linux/gcd.h~lib-math-gcd-use-static-key-to-select-implementation-at-runtime
++++ a/include/linux/gcd.h
+@@ -3,6 +3,9 @@
+ #define _GCD_H
+ 
+ #include <linux/compiler.h>
++#include <linux/jump_label.h>
++
++DECLARE_STATIC_KEY_TRUE(efficient_ffs_key);
+ 
+ unsigned long gcd(unsigned long a, unsigned long b) __attribute_const__;
+ 
+--- a/lib/math/gcd.c~lib-math-gcd-use-static-key-to-select-implementation-at-runtime
++++ a/lib/math/gcd.c
+@@ -11,22 +11,16 @@
+  * has decent hardware division.
+  */
+ 
++DEFINE_STATIC_KEY_TRUE(efficient_ffs_key);
++
+ #if !defined(CONFIG_CPU_NO_EFFICIENT_FFS)
+ 
+ /* If __ffs is available, the even/odd algorithm benchmarks slower. */
+ 
+-/**
+- * gcd - calculate and return the greatest common divisor of 2 unsigned longs
+- * @a: first value
+- * @b: second value
+- */
+-unsigned long gcd(unsigned long a, unsigned long b)
++static unsigned long binary_gcd(unsigned long a, unsigned long b)
+ {
+ 	unsigned long r = a | b;
+ 
+-	if (!a || !b)
+-		return r;
+-
+ 	b >>= __ffs(b);
+ 	if (b == 1)
+ 		return r & -r;
+@@ -44,9 +38,15 @@ unsigned long gcd(unsigned long a, unsig
+ 	}
+ }
+ 
+-#else
++#endif
+ 
+ /* If normalization is done by loops, the even/odd algorithm is a win. */
++
++/**
++ * gcd - calculate and return the greatest common divisor of 2 unsigned longs
++ * @a: first value
++ * @b: second value
++ */
+ unsigned long gcd(unsigned long a, unsigned long b)
+ {
+ 	unsigned long r = a | b;
+@@ -54,6 +54,11 @@ unsigned long gcd(unsigned long a, unsig
+ 	if (!a || !b)
+ 		return r;
+ 
++#if !defined(CONFIG_CPU_NO_EFFICIENT_FFS)
++	if (static_branch_likely(&efficient_ffs_key))
++		return binary_gcd(a, b);
++#endif
++
+ 	/* Isolate lsbit of r */
+ 	r &= -r;
+ 
+@@ -80,6 +85,4 @@ unsigned long gcd(unsigned long a, unsig
+ 	}
+ }
+ 
+-#endif
+-
+ EXPORT_SYMBOL_GPL(gcd);
+_
