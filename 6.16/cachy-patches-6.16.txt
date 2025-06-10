@@ -1,7 +1,7 @@
 
 
 
-
+https://raw.githubusercontent.com/Frogging-Family/linux-tkg/refs/heads/master/linux-tkg-patches/6.16/0014-OpenRGB.patch
 
 https://raw.githubusercontent.com/Ven0m0/Linux-Kernel-Patches/refs/heads/main/6.16/858hz.patch
 https://raw.githubusercontent.com/Ven0m0/Linux-Kernel-Patches/refs/heads/main/6.16/lib-math-gcd-use-static-key-to-select-implementation-at-runtime.patch
