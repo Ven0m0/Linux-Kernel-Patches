@@ -9,4 +9,9 @@ https://raw.githubusercontent.com/Ven0m0/Linux-Kernel-Patches/refs/heads/main/6.
 https://raw.githubusercontent.com/Ven0m0/Linux-Kernel-Patches/refs/heads/main/6.16/mm-hugetlb-remove-unnecessary-holding-of-hugetlb_lock.patch
 https://raw.githubusercontent.com/Ven0m0/Linux-Kernel-Patches/refs/heads/main/6.16/mm-madvise-use-walk_page_range_vma-instead-of-walk_page_range.patch
 https://raw.githubusercontent.com/Ven0m0/Linux-Kernel-Patches/refs/heads/main/6.16/mm-mempolicy-skip-unnecessary-synchronize_rcu.patch
-https://raw.githubusercontent.com/Ven0m0/Linux-Kernel-Patches/refs/heads/main/6.16/mm-zblock-make-active_list-rcu_list.patch
+# https://raw.githubusercontent.com/Ven0m0/Linux-Kernel-Patches/refs/heads/main/6.16/mm-zblock-make-active_list-rcu_list.patch
+
+https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.16-rc/bore-smt-cores-patches-sep/0002-sched-fair-Prefer-full-idle-SMT-cores.patch
+https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.16-rc/arch-patches/0001-arch-patches.patch
+https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.16-rc/cpuidle-patches/0001-cpuidle-Prefer-teo-over-menu-governor.patch
+https://raw.githubusercontent.com/sirlucjan/kernel-patches/refs/heads/master/6.16-rc/drm-patches-all/0001-drm-patches.patch
