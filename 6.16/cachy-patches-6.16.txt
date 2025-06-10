@@ -1,1 +1,12 @@
 
+
+
+
+
+https://raw.githubusercontent.com/Ven0m0/Linux-Kernel-Patches/refs/heads/main/6.16/858hz.patch
+https://raw.githubusercontent.com/Ven0m0/Linux-Kernel-Patches/refs/heads/main/6.16/lib-math-gcd-use-static-key-to-select-implementation-at-runtime.patch
+https://raw.githubusercontent.com/Ven0m0/Linux-Kernel-Patches/refs/heads/main/6.16/mm-filemap-allow-arch-to-request-folio-size-for-exec-memory.patch
+https://raw.githubusercontent.com/Ven0m0/Linux-Kernel-Patches/refs/heads/main/6.16/mm-hugetlb-remove-unnecessary-holding-of-hugetlb_lock.patch
+https://raw.githubusercontent.com/Ven0m0/Linux-Kernel-Patches/refs/heads/main/6.16/mm-madvise-use-walk_page_range_vma-instead-of-walk_page_range.patch
+https://raw.githubusercontent.com/Ven0m0/Linux-Kernel-Patches/refs/heads/main/6.16/mm-mempolicy-skip-unnecessary-synchronize_rcu.patch
+https://raw.githubusercontent.com/Ven0m0/Linux-Kernel-Patches/refs/heads/main/6.16/mm-zblock-make-active_list-rcu_list.patch
