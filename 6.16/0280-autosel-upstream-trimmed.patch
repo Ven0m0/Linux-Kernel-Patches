@@ -1,0 +1,187 @@
+Subject: [PATCH 2/8] fs/filesystems: Fix potential unsigned integer
+ underflow in fs_name()
+
+[ Upstream commit 1363c134ade81e425873b410566e957fecebb261 ]
+
+fs_name() has @index as unsigned int, so there is underflow risk for
+operation '@index--'.
+
+Fix by breaking the for loop when '@index == 0' which is also more proper
+than '@index <= 0' for unsigned integer comparison.
+
+Signed-off-by: Zijun Hu <quic_zijuhu@xxxxxxxxxx>
+Link: https://lore.kernel.org/20250410-fix_fs-v1-1-7c14ccc8ebaa@quicinc.com
+Signed-off-by: Christian Brauner <brauner@xxxxxxxxxx>
+Signed-off-by: Sasha Levin <sashal@xxxxxxxxxx>
+---
+ fs/filesystems.c | 14 +++++++++-----
+ 1 file changed, 9 insertions(+), 5 deletions(-)
+
+diff --git a/fs/filesystems.c b/fs/filesystems.c
+index 58b9067b2391c..95e5256821a53 100644
+--- a/fs/filesystems.c
++++ b/fs/filesystems.c
+@@ -156,15 +156,19 @@ static int fs_index(const char __user * __name)
+ static int fs_name(unsigned int index, char __user * buf)
+ {
+ 	struct file_system_type * tmp;
+-	int len, res;
++	int len, res = -EINVAL;
+ 
+ 	read_lock(&file_systems_lock);
+-	for (tmp = file_systems; tmp; tmp = tmp->next, index--)
+-		if (index <= 0 && try_module_get(tmp->owner))
++	for (tmp = file_systems; tmp; tmp = tmp->next, index--) {
++		if (index == 0) {
++			if (try_module_get(tmp->owner))
++				res = 0;
+ 			break;
++		}
++	}
+ 	read_unlock(&file_systems_lock);
+-	if (!tmp)
+-		return -EINVAL;
++	if (res)
++		return res;
+ 
+ 	/* OK, we got the reference, so we can safely block */
+ 	len = strlen(tmp->name) + 1;
+-- 
+2.39.5
+
+Subject: [PATCH 7/8] perf: Ensure bpf_perf_link path is properly serialized
+
+[ Upstream commit 7ed9138a72829d2035ecbd8dbd35b1bc3c137c40 ]
+
+Ravi reported that the bpf_perf_link_attach() usage of
+perf_event_set_bpf_prog() is not serialized by ctx->mutex, unlike the
+PERF_EVENT_IOC_SET_BPF case.
+
+Reported-by: Ravi Bangoria <ravi.bangoria@xxxxxxxxxx>
+Signed-off-by: Peter Zijlstra (Intel) <peterz@xxxxxxxxxx>
+Reviewed-by: Ravi Bangoria <ravi.bangoria@xxxxxxxxxx>
+Link: https://lkml.kernel.org/r/20250307193305.486326750@infradead.org
+Signed-off-by: Sasha Levin <sashal@xxxxxxxxxx>
+---
+ kernel/events/core.c | 34 ++++++++++++++++++++++++++++++----
+ 1 file changed, 30 insertions(+), 4 deletions(-)
+
+diff --git a/kernel/events/core.c b/kernel/events/core.c
+index 93ce810384c92..bdbd119b6d06a 100644
+--- a/kernel/events/core.c
++++ b/kernel/events/core.c
+@@ -6013,6 +6013,9 @@ static int perf_event_set_output(struct perf_event *event,
+ static int perf_event_set_filter(struct perf_event *event, void __user *arg);
+ static int perf_copy_attr(struct perf_event_attr __user *uattr,
+ 			  struct perf_event_attr *attr);
++static int __perf_event_set_bpf_prog(struct perf_event *event,
++				     struct bpf_prog *prog,
++				     u64 bpf_cookie);
+ 
+ static long _perf_ioctl(struct perf_event *event, unsigned int cmd, unsigned long arg)
+ {
+@@ -6075,7 +6078,7 @@ static long _perf_ioctl(struct perf_event *event, unsigned int cmd, unsigned lon
+ 		if (IS_ERR(prog))
+ 			return PTR_ERR(prog);
+ 
+-		err = perf_event_set_bpf_prog(event, prog, 0);
++		err = __perf_event_set_bpf_prog(event, prog, 0);
+ 		if (err) {
+ 			bpf_prog_put(prog);
+ 			return err;
+@@ -10798,8 +10801,9 @@ static inline bool perf_event_is_tracing(struct perf_event *event)
+ 	return false;
+ }
+ 
+-int perf_event_set_bpf_prog(struct perf_event *event, struct bpf_prog *prog,
+-			    u64 bpf_cookie)
++static int __perf_event_set_bpf_prog(struct perf_event *event,
++				     struct bpf_prog *prog,
++				     u64 bpf_cookie)
+ {
+ 	bool is_kprobe, is_uprobe, is_tracepoint, is_syscall_tp;
+ 
+@@ -10837,6 +10841,20 @@ int perf_event_set_bpf_prog(struct perf_event *event, struct bpf_prog *prog,
+ 	return perf_event_attach_bpf_prog(event, prog, bpf_cookie);
+ }
+ 
++int perf_event_set_bpf_prog(struct perf_event *event,
++			    struct bpf_prog *prog,
++			    u64 bpf_cookie)
++{
++	struct perf_event_context *ctx;
++	int ret;
++
++	ctx = perf_event_ctx_lock(event);
++	ret = __perf_event_set_bpf_prog(event, prog, bpf_cookie);
++	perf_event_ctx_unlock(event, ctx);
++
++	return ret;
++}
++
+ void perf_event_free_bpf_prog(struct perf_event *event)
+ {
+ 	if (!perf_event_is_tracing(event)) {
+@@ -10856,7 +10874,15 @@ static void perf_event_free_filter(struct perf_event *event)
+ {
+ }
+ 
+-int perf_event_set_bpf_prog(struct perf_event *event, struct bpf_prog *prog,
++static int __perf_event_set_bpf_prog(struct perf_event *event,
++				     struct bpf_prog *prog,
++				     u64 bpf_cookie)
++{
++	return -ENOENT;
++}
++
++int perf_event_set_bpf_prog(struct perf_event *event,
++			    struct bpf_prog *prog,
+ 			    u64 bpf_cookie)
+ {
+ 	return -ENOENT;
+-- 
+2.39.5
+
+Subject: [PATCH 8/8] block: use q->elevator with ->elevator_lock held in
+ elv_iosched_show()
+
+[ Upstream commit 94209d27d14104ed828ca88cd5403a99162fe51a ]
+
+Use q->elevator with ->elevator_lock held in elv_iosched_show(), since
+the local cached elevator reference may become stale after getting
+->elevator_lock.
+
+Reviewed-by: Hannes Reinecke <hare@xxxxxxxxxx>
+Reviewed-by: Nilay Shroff <nilay@xxxxxxxxxx>
+Reviewed-by: Christoph Hellwig <hch@xxxxxxxxxx>
+Signed-off-by: Ming Lei <ming.lei@xxxxxxxxxx>
+Link: https://lore.kernel.org/r/20250505141805.2751237-5-ming.lei@redhat.com
+Signed-off-by: Jens Axboe <axboe@xxxxxxxxxx>
+Signed-off-by: Sasha Levin <sashal@xxxxxxxxxx>
+---
+ block/elevator.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/block/elevator.c b/block/elevator.c
+index cd2ce49216010..1cc89c49e4cc9 100644
+--- a/block/elevator.c
++++ b/block/elevator.c
+@@ -747,7 +747,6 @@ ssize_t elv_iosched_store(struct gendisk *disk, const char *buf,
+ ssize_t elv_iosched_show(struct gendisk *disk, char *name)
+ {
+ 	struct request_queue *q = disk->queue;
+-	struct elevator_queue *eq = q->elevator;
+ 	struct elevator_type *cur = NULL, *e;
+ 	int len = 0;
+ 
+@@ -755,7 +754,7 @@ ssize_t elv_iosched_show(struct gendisk *disk, char *name)
+ 		len += sprintf(name+len, "[none] ");
+ 	} else {
+ 		len += sprintf(name+len, "none ");
+-		cur = eq->type;
++		cur = q->elevator->type;
+ 	}
+ 
+ 	spin_lock(&elv_list_lock);
+-- 
+2.39.5
