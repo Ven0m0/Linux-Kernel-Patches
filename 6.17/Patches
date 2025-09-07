@@ -21,9 +21,11 @@ https://github.com/CachyOS/kernel-patches/tree/master/6.17
 https://github.com/firelzrd/zram-ir/blob/main/patches/0001-linux6.16.0-zram-ir-1.2.patch
 
 
+https://github.com/firelzrd/kcompressd-unofficial/blob/main/patches/stable/0001-linux6.16-kcompressd-unofficial-0.5.patch
+# sysctl -w vm.kcompressd=1
 
-
-
+https://github.com/firelzrd/le9uo/blob/main/le9uo_patches/0002-vm.workingset_protection-On-by-default.patch
+https://github.com/firelzrd/le9uo/blob/main/le9uo_patches/stable/base/0001-linux6.16-le9uo-1.15.patch
 
 
 
