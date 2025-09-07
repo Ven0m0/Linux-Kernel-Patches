@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 # Trim kernel by deselecting options not enabled in the Clear Linux config.
-# Options already unset in the CachyOS config were pruned from this list.
-
-# Exit immediately on error.
-set -e
+# Options already unset in the CachyOS config were pruned from this list.e
 
 cd "$1" || { echo "Directory not found: $1"; exit 1; }
+
+script_dir=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+export LC_ALL=C
+for db in "$script_dir"/*/*modprobed.db
+do
+  sort "$db" | uniq > "$db.sorted"
+  mv "$db.sorted" "$db"
+done
 
 # Processor type and features
 scripts/config -d XEN
