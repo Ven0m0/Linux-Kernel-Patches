@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+WORKDIR="$(builtin cd -- "$(dirname -- "${BASH_SOURCE[0]:-}")" && printf '%s\n' "$PWD")"
+builtin cd -- "$WORKDIR" || exit 1
+
+export LC_ALL=C
+_sort-moddbs(){
+  script_dir="${WORKDIR:-$PWD}"
+  for db in "$script_dir"/*/*modprobed.db do
+    sort "$db" | uniq > "$db.sorted"; mv "$db.sorted" "$db"
+  done
+}
+_sort-moddbs
