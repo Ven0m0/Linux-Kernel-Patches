@@ -20,3 +20,10 @@
 - https://github.com/arvin-foroutan/build-ubuntu-kernel
 
 - https://github.com/firelzrd/zram-ir
+
+
+
+
+# Tools
+
+- https://github.com/twaugh/patchutils
