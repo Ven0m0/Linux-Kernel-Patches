@@ -7,8 +7,7 @@
 #  Somewhat potentially dangerous, removes zram module at the end
 
 # https://github.com/torvalds/linux/blob/master/Documentation/blockdev/zram.txt
-
-https://github.com/firelzrd/zram-ir/blob/main/scripts/zramswap
+# https://github.com/firelzrd/zram-ir/blob/main/scripts/zramswap
 
 readonly CONFIG="/etc/default/zramswap"
 readonly SWAP_DEV="/dev/zram0"
