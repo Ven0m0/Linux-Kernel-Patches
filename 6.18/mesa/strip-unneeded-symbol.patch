@@ -1,0 +1,67 @@
+From b0f2942a16017f88395d768afedd7373860968ce Mon Sep 17 00:00:00 2001
+From: Nathan Chancellor <nathan@kernel.org>
+Date: Fri, 10 Oct 2025 14:49:27 -0700
+Subject: [PATCH] kbuild: Use '--strip-unneeded-symbol' for removing module
+ device table symbols
+
+After commit 5ab23c7923a1 ("modpost: Create modalias for builtin
+modules"), relocatable RISC-V kernels with CONFIG_KASAN=y start failing
+when attempting to strip the module device table symbols:
+
+  riscv64-linux-objcopy: not stripping symbol `__mod_device_table__kmod_irq_starfive_jh8100_intc__of__starfive_intc_irqchip_match_table' because it is named in a relocation
+  make[4]: *** [scripts/Makefile.vmlinux:97: vmlinux] Error 1
+
+The relocation appears to come from .LASANLOC5 in .data.rel.local:
+
+  $ llvm-objdump --disassemble-symbols=.LASANLOC5 --disassemble-all -r drivers/irqchip/irq-starfive-jh8100-intc.o
+
+  drivers/irqchip/irq-starfive-jh8100-intc.o:   file format elf64-littleriscv
+
+  Disassembly of section .data.rel.local:
+
+  0000000000000180 <.LASANLOC5>:
+  ...
+       1d0: 0000          unimp
+                  00000000000001d0:  R_RISCV_64   __mod_device_table__kmod_irq_starfive_jh8100_intc__of__starfive_intc_irqchip_match_table
+  ...
+
+This section appears to come from GCC for including additional
+information about global variables that may be protected by KASAN.
+
+There appears to be no way to opt out of the generation of these symbols
+through either a flag or attribute. Attempting to remove '.LASANLOC*'
+with '--strip-symbol' results in the same error as above because these
+symbols may refer to (thus have relocation between) each other.
+
+Avoid this build breakage by switching to '--strip-unneeded-symbol' for
+removing __mod_device_table__ symbols, as it will only remove the symbol
+when there is no relocation pointing to it. While this may result in a
+little more bloat in the symbol table in certain configurations, it is
+not as bad as outright build failures.
+
+Fixes: 5ab23c7923a1 ("modpost: Create modalias for builtin modules")
+Reported-by: Charles Mirabile <cmirabil@redhat.com>
+Closes: https://lore.kernel.org/20251007011637.2512413-1-cmirabil@redhat.com/
+Suggested-by: Alexey Gladkov <legion@kernel.org>
+Tested-by: Nicolas Schier <nsc@kernel.org>
+Signed-off-by: Nathan Chancellor <nathan@kernel.org>
+---
+ scripts/Makefile.vmlinux | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/scripts/Makefile.vmlinux b/scripts/Makefile.vmlinux
+index c02f85c2e241a..ced4379550d76 100644
+--- a/scripts/Makefile.vmlinux
++++ b/scripts/Makefile.vmlinux
+@@ -87,7 +87,7 @@ remove-section-$(CONFIG_ARCH_VMLINUX_NEEDS_RELOCS) += '.rel*' '!.rel*.dyn'
+ # https://sourceware.org/git/?p=binutils-gdb.git;a=commit;h=c12d9fa2afe7abcbe407a00e15719e1a1350c2a7
+ remove-section-$(CONFIG_ARCH_VMLINUX_NEEDS_RELOCS) += '.rel.*'
+ 
+-remove-symbols := -w --strip-symbol='__mod_device_table__*'
++remove-symbols := -w --strip-unneeded-symbol='__mod_device_table__*'
+ 
+ # To avoid warnings: "empty loadable segment detected at ..." from GNU objcopy,
+ # it is necessary to remove the PT_LOAD flag from the segment.
+-- 
+GitLab
+

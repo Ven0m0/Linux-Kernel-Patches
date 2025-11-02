@@ -1,0 +1,2649 @@
+diff --git a/Documentation/admin-guide/kernel-parameters.txt b/Documentation/admin-guide/kernel-parameters.txt
+index a51ab46568544875f36e1369cb54dd31bae76516..6c42061ca20e581b5192b66c6f25aba38d4f8ff8 100644
+--- a/Documentation/admin-guide/kernel-parameters.txt
++++ b/Documentation/admin-guide/kernel-parameters.txt
+@@ -608,6 +608,24 @@
+ 	ccw_timeout_log	[S390]
+ 			See Documentation/arch/s390/common_io.rst for details.
+ 
++	cfi=		[X86-64] Set Control Flow Integrity checking features
++			when CONFIG_FINEIBT is enabled.
++			Format: feature[,feature...]
++			Default: auto
++
++			auto:	  Use FineIBT if IBT available, otherwise kCFI.
++				  Under FineIBT, enable "paranoid" mode when
++				  FRED is not available.
++			off:	  Turn off CFI checking.
++			kcfi:	  Use kCFI (disable FineIBT).
++			fineibt:  Use FineIBT (even if IBT not available).
++			norand:   Do not re-randomize CFI hashes.
++			paranoid: Add caller hash checking under FineIBT.
++			bhi:	  Enable register poisoning to stop speculation
++				  across FineIBT. (Disabled by default.)
++			warn:	  Do not enforce CFI checking: warn only.
++			debug:    Report CFI initialization details.
++
+ 	cgroup_disable=	[KNL] Disable a particular controller or optional feature
+ 			Format: {name of the controller(s) or feature(s) to disable}
+ 			The effects of cgroup_disable=foo are:
+diff --git a/arch/x86/entry/calling.h b/arch/x86/entry/calling.h
+index 94519688b0071d34a679cd80ff1255dada739a0b..77e2d920a64073f6060307a4cf435a885eb20b02 100644
+--- a/arch/x86/entry/calling.h
++++ b/arch/x86/entry/calling.h
+@@ -99,7 +99,7 @@ For 32-bit we have the following conventions - kernel is built with
+ 	.endif
+ .endm
+ 
+-.macro CLEAR_REGS clear_bp=1
++.macro CLEAR_REGS clear_callee=1
+ 	/*
+ 	 * Sanitize registers of values that a speculation attack might
+ 	 * otherwise want to exploit. The lower registers are likely clobbered
+@@ -113,20 +113,19 @@ For 32-bit we have the following conventions - kernel is built with
+ 	xorl	%r9d,  %r9d	/* nospec r9  */
+ 	xorl	%r10d, %r10d	/* nospec r10 */
+ 	xorl	%r11d, %r11d	/* nospec r11 */
++	.if \clear_callee
+ 	xorl	%ebx,  %ebx	/* nospec rbx */
+-	.if \clear_bp
+ 	xorl	%ebp,  %ebp	/* nospec rbp */
+-	.endif
+ 	xorl	%r12d, %r12d	/* nospec r12 */
+ 	xorl	%r13d, %r13d	/* nospec r13 */
+ 	xorl	%r14d, %r14d	/* nospec r14 */
+ 	xorl	%r15d, %r15d	/* nospec r15 */
+-
++	.endif
+ .endm
+ 
+-.macro PUSH_AND_CLEAR_REGS rdx=%rdx rcx=%rcx rax=%rax save_ret=0 clear_bp=1 unwind_hint=1
++.macro PUSH_AND_CLEAR_REGS rdx=%rdx rcx=%rcx rax=%rax save_ret=0 clear_callee=1 unwind_hint=1
+ 	PUSH_REGS rdx=\rdx, rcx=\rcx, rax=\rax, save_ret=\save_ret unwind_hint=\unwind_hint
+-	CLEAR_REGS clear_bp=\clear_bp
++	CLEAR_REGS clear_callee=\clear_callee
+ .endm
+ 
+ .macro POP_REGS pop_rdi=1
+diff --git a/arch/x86/entry/entry_64_fred.S b/arch/x86/entry/entry_64_fred.S
+index 3c1511feadf79fc8ed7b09c8ceff949859567d24..fafbd3e68cb8714a89dd522ec389337c1da4d9af 100644
+--- a/arch/x86/entry/entry_64_fred.S
++++ b/arch/x86/entry/entry_64_fred.S
+@@ -111,18 +111,37 @@ SYM_FUNC_START(asm_fred_entry_from_kvm)
+ 	push %rax				/* Return RIP */
+ 	push $0					/* Error code, 0 for IRQ/NMI */
+ 
+-	PUSH_AND_CLEAR_REGS clear_bp=0 unwind_hint=0
++	PUSH_AND_CLEAR_REGS clear_callee=0 unwind_hint=0
++
+ 	movq %rsp, %rdi				/* %rdi -> pt_regs */
++	/*
++	 * At this point: {rdi, rsi, rdx, rcx, r8, r9}, {r10, r11}, {rax, rdx}
++	 * are clobbered, which corresponds to: arguments, extra caller-saved
++	 * and return. All registers a C function is allowed to clobber.
++	 *
++	 * Notably, the callee-saved registers: {rbx, r12, r13, r14, r15}
++	 * are untouched, with the exception of rbp, which carries the stack
++	 * frame and will be restored before exit.
++	 *
++	 * Further calling another C function will not alter this state.
++	 */
+ 	call __fred_entry_from_kvm		/* Call the C entry point */
+-	POP_REGS
+-	ERETS
+-1:
++
+ 	/*
+-	 * Objtool doesn't understand what ERETS does, this hint tells it that
+-	 * yes, we'll reach here and with what stack state. A save/restore pair
+-	 * isn't strictly needed, but it's the simplest form.
++	 * When FRED, use ERETS to potentially clear NMIs, otherwise simply
++	 * restore the stack pointer.
++	 */
++	ALTERNATIVE "nop; nop; mov %rbp, %rsp", \
++	            __stringify(add $C_PTREGS_SIZE, %rsp; ERETS), \
++		    X86_FEATURE_FRED
++
++1:	/*
++	 * Objtool doesn't understand ERETS, and the cfi register state is
++	 * different from initial_func_cfi due to PUSH_REGS. Tell it the state
++	 * is similar to where UNWIND_HINT_SAVE is.
+ 	 */
+ 	UNWIND_HINT_RESTORE
++
+ 	pop %rbp
+ 	RET
+ 
+diff --git a/arch/x86/hyperv/hv_init.c b/arch/x86/hyperv/hv_init.c
+index afdbda2dd7b7e213289a272adcafed5e6e1e879f..e890fd37e9c2d278fac80eb71329ac51931c3363 100644
+--- a/arch/x86/hyperv/hv_init.c
++++ b/arch/x86/hyperv/hv_init.c
+@@ -17,7 +17,6 @@
+ #include <asm/desc.h>
+ #include <asm/e820/api.h>
+ #include <asm/sev.h>
+-#include <asm/ibt.h>
+ #include <asm/hypervisor.h>
+ #include <hyperv/hvhdk.h>
+ #include <asm/mshyperv.h>
+@@ -37,7 +36,45 @@
+ #include <linux/export.h>
+ 
+ void *hv_hypercall_pg;
++
++#ifdef CONFIG_X86_64
++static u64 __hv_hyperfail(u64 control, u64 param1, u64 param2)
++{
++	return U64_MAX;
++}
++
++DEFINE_STATIC_CALL(__hv_hypercall, __hv_hyperfail);
++
++u64 hv_std_hypercall(u64 control, u64 param1, u64 param2)
++{
++	u64 hv_status;
++
++	register u64 __r8 asm("r8") = param2;
++	asm volatile ("call " STATIC_CALL_TRAMP_STR(__hv_hypercall)
++		      : "=a" (hv_status), ASM_CALL_CONSTRAINT,
++		        "+c" (control), "+d" (param1), "+r" (__r8)
++		      : : "cc", "memory", "r9", "r10", "r11");
++
++	return hv_status;
++}
++
++typedef u64 (*hv_hypercall_f)(u64 control, u64 param1, u64 param2);
++
++static inline void hv_set_hypercall_pg(void *ptr)
++{
++	hv_hypercall_pg = ptr;
++
++	if (!ptr)
++		ptr = &__hv_hyperfail;
++	static_call_update(__hv_hypercall, (hv_hypercall_f)ptr);
++}
++#else
++static inline void hv_set_hypercall_pg(void *ptr)
++{
++	hv_hypercall_pg = ptr;
++}
+ EXPORT_SYMBOL_GPL(hv_hypercall_pg);
++#endif
+ 
+ union hv_ghcb * __percpu *hv_ghcb_pg;
+ 
+@@ -330,7 +367,7 @@ static int hv_suspend(void)
+ 	 * pointer is restored on resume.
+ 	 */
+ 	hv_hypercall_pg_saved = hv_hypercall_pg;
+-	hv_hypercall_pg = NULL;
++	hv_set_hypercall_pg(NULL);
+ 
+ 	/* Disable the hypercall page in the hypervisor */
+ 	rdmsrq(HV_X64_MSR_HYPERCALL, hypercall_msr.as_uint64);
+@@ -356,7 +393,7 @@ static void hv_resume(void)
+ 		vmalloc_to_pfn(hv_hypercall_pg_saved);
+ 	wrmsrq(HV_X64_MSR_HYPERCALL, hypercall_msr.as_uint64);
+ 
+-	hv_hypercall_pg = hv_hypercall_pg_saved;
++	hv_set_hypercall_pg(hv_hypercall_pg_saved);
+ 	hv_hypercall_pg_saved = NULL;
+ 
+ 	/*
+@@ -476,8 +513,8 @@ void __init hyperv_init(void)
+ 	if (hv_isolation_type_tdx() && !ms_hyperv.paravisor_present)
+ 		goto skip_hypercall_pg_init;
+ 
+-	hv_hypercall_pg = __vmalloc_node_range(PAGE_SIZE, 1, VMALLOC_START,
+-			VMALLOC_END, GFP_KERNEL, PAGE_KERNEL_ROX,
++	hv_hypercall_pg = __vmalloc_node_range(PAGE_SIZE, 1, MODULES_VADDR,
++			MODULES_END, GFP_KERNEL, PAGE_KERNEL_ROX,
+ 			VM_FLUSH_RESET_PERMS, NUMA_NO_NODE,
+ 			__builtin_return_address(0));
+ 	if (hv_hypercall_pg == NULL)
+@@ -515,27 +552,9 @@ void __init hyperv_init(void)
+ 		wrmsrq(HV_X64_MSR_HYPERCALL, hypercall_msr.as_uint64);
+ 	}
+ 
+-skip_hypercall_pg_init:
+-	/*
+-	 * Some versions of Hyper-V that provide IBT in guest VMs have a bug
+-	 * in that there's no ENDBR64 instruction at the entry to the
+-	 * hypercall page. Because hypercalls are invoked via an indirect call
+-	 * to the hypercall page, all hypercall attempts fail when IBT is
+-	 * enabled, and Linux panics. For such buggy versions, disable IBT.
+-	 *
+-	 * Fixed versions of Hyper-V always provide ENDBR64 on the hypercall
+-	 * page, so if future Linux kernel versions enable IBT for 32-bit
+-	 * builds, additional hypercall page hackery will be required here
+-	 * to provide an ENDBR32.
+-	 */
+-#ifdef CONFIG_X86_KERNEL_IBT
+-	if (cpu_feature_enabled(X86_FEATURE_IBT) &&
+-	    *(u32 *)hv_hypercall_pg != gen_endbr()) {
+-		setup_clear_cpu_cap(X86_FEATURE_IBT);
+-		pr_warn("Disabling IBT because of Hyper-V bug\n");
+-	}
+-#endif
++	hv_set_hypercall_pg(hv_hypercall_pg);
+ 
++skip_hypercall_pg_init:
+ 	/*
+ 	 * hyperv_init() is called before LAPIC is initialized: see
+ 	 * apic_intr_mode_init() -> x86_platform.apic_post_init() and
+diff --git a/arch/x86/hyperv/ivm.c b/arch/x86/hyperv/ivm.c
+index a4615b889f3e6c84801d2cf4217d65f0866ab04b..651771534cae286920d3fb1b01837dbc53ba0a16 100644
+--- a/arch/x86/hyperv/ivm.c
++++ b/arch/x86/hyperv/ivm.c
+@@ -385,9 +385,23 @@ int hv_snp_boot_ap(u32 apic_id, unsigned long start_ip, unsigned int cpu)
+ 	return ret;
+ }
+ 
++u64 hv_snp_hypercall(u64 control, u64 param1, u64 param2)
++{
++	u64 hv_status;
++
++	register u64 __r8 asm("r8") = param2;
++	asm volatile("vmmcall"
++		     : "=a" (hv_status), ASM_CALL_CONSTRAINT,
++		       "+c" (control), "+d" (param1), "+r" (__r8)
++		     : : "cc", "memory", "r9", "r10", "r11");
++
++	return hv_status;
++}
++
+ #else
+ static inline void hv_ghcb_msr_write(u64 msr, u64 value) {}
+ static inline void hv_ghcb_msr_read(u64 msr, u64 *value) {}
++u64 hv_snp_hypercall(u64 control, u64 param1, u64 param2) { return U64_MAX; }
+ #endif /* CONFIG_AMD_MEM_ENCRYPT */
+ 
+ #ifdef CONFIG_INTEL_TDX_GUEST
+@@ -437,6 +451,7 @@ u64 hv_tdx_hypercall(u64 control, u64 param1, u64 param2)
+ #else
+ static inline void hv_tdx_msr_write(u64 msr, u64 value) {}
+ static inline void hv_tdx_msr_read(u64 msr, u64 *value) {}
++u64 hv_tdx_hypercall(u64 control, u64 param1, u64 param2) { return U64_MAX; }
+ #endif /* CONFIG_INTEL_TDX_GUEST */
+ 
+ #if defined(CONFIG_AMD_MEM_ENCRYPT) || defined(CONFIG_INTEL_TDX_GUEST)
+diff --git a/arch/x86/include/asm/bug.h b/arch/x86/include/asm/bug.h
+index 20fcb8507ad12914ce8d0b0b68d71871bebe6b0e..880ca15073ed12641b6a231fef0d553c3bce52e4 100644
+--- a/arch/x86/include/asm/bug.h
++++ b/arch/x86/include/asm/bug.h
+@@ -5,14 +5,19 @@
+ #include <linux/stringify.h>
+ #include <linux/instrumentation.h>
+ #include <linux/objtool.h>
++#include <asm/asm.h>
+ 
+ /*
+  * Despite that some emulators terminate on UD2, we use it for WARN().
+  */
+-#define ASM_UD2		".byte 0x0f, 0x0b"
++#define ASM_UD2		_ASM_BYTES(0x0f, 0x0b)
+ #define INSN_UD2	0x0b0f
+ #define LEN_UD2		2
+ 
++#define ASM_UDB		_ASM_BYTES(0xd6)
++#define INSN_UDB	0xd6
++#define LEN_UDB		1
++
+ /*
+  * In clang we have UD1s reporting UBSAN failures on X86, 64 and 32bit.
+  */
+@@ -26,7 +31,7 @@
+ #define BUG_UD2			0xfffe
+ #define BUG_UD1			0xfffd
+ #define BUG_UD1_UBSAN		0xfffc
+-#define BUG_EA			0xffea
++#define BUG_UDB			0xffd6
+ #define BUG_LOCK		0xfff0
+ 
+ #ifdef CONFIG_GENERIC_BUG
+diff --git a/arch/x86/include/asm/cfi.h b/arch/x86/include/asm/cfi.h
+index 976b90a3d190ea3c228c2ded1ac7fa5ca4b70299..c40b9ebc1fb40fbe8b4481665d14b38aae9ee81d 100644
+--- a/arch/x86/include/asm/cfi.h
++++ b/arch/x86/include/asm/cfi.h
+@@ -71,12 +71,10 @@
+  *
+  * __cfi_foo:
+  *   endbr64
+- *   subl 0x12345678, %r10d
+- *   jz   foo
+- *   ud2
+- *   nop
++ *   subl 0x12345678, %eax
++ *   jne.32,pn foo+3
+  * foo:
+- *   osp nop3			# was endbr64
++ *   nopl -42(%rax)		# was endbr64
+  *   ... code here ...
+  *   ret
+  *
+@@ -86,9 +84,9 @@
+  * indirect caller:
+  *   lea foo(%rip), %r11
+  *   ...
+- *   movl $0x12345678, %r10d
+- *   subl $16, %r11
+- *   nop4
++ *   movl $0x12345678, %eax
++ *   lea  -0x10(%r11), %r11
++ *   nop5
+  *   call *%r11
+  *
+  */
+diff --git a/arch/x86/include/asm/ibt.h b/arch/x86/include/asm/ibt.h
+index 28d84525730391b77e01e385c104da58d6f105ec..5e45d64247222319fda3e87b35551b34268ae272 100644
+--- a/arch/x86/include/asm/ibt.h
++++ b/arch/x86/include/asm/ibt.h
+@@ -59,10 +59,10 @@ static __always_inline __attribute_const__ u32 gen_endbr(void)
+ static __always_inline __attribute_const__ u32 gen_endbr_poison(void)
+ {
+ 	/*
+-	 * 4 byte NOP that isn't NOP4 (in fact it is OSP NOP3), such that it
+-	 * will be unique to (former) ENDBR sites.
++	 * 4 byte NOP that isn't NOP4, such that it will be unique to (former)
++	 * ENDBR sites. Additionally it carries UDB as immediate.
+ 	 */
+-	return 0x001f0f66; /* osp nopl (%rax) */
++	return 0xd6401f0f; /* nopl -42(%rax) */
+ }
+ 
+ static inline bool __is_endbr(u32 val)
+@@ -70,10 +70,6 @@ static inline bool __is_endbr(u32 val)
+ 	if (val == gen_endbr_poison())
+ 		return true;
+ 
+-	/* See cfi_fineibt_bhi_preamble() */
+-	if (IS_ENABLED(CONFIG_FINEIBT_BHI) && val == 0x001f0ff5)
+-		return true;
+-
+ 	val &= ~0x01000000U; /* ENDBR32 -> ENDBR64 */
+ 	return val == gen_endbr();
+ }
+diff --git a/arch/x86/include/asm/idtentry.h b/arch/x86/include/asm/idtentry.h
+index a4ec27c6798875900cbdbba927918e70b900f63b..abd637e54e94e3d81cfde9435535d006457f6090 100644
+--- a/arch/x86/include/asm/idtentry.h
++++ b/arch/x86/include/asm/idtentry.h
+@@ -460,17 +460,12 @@ __visible noinstr void func(struct pt_regs *regs,			\
+ #endif
+ 
+ void idt_install_sysvec(unsigned int n, const void *function);
+-
+-#ifdef CONFIG_X86_FRED
+ void fred_install_sysvec(unsigned int vector, const idtentry_t function);
+-#else
+-static inline void fred_install_sysvec(unsigned int vector, const idtentry_t function) { }
+-#endif
+ 
+ #define sysvec_install(vector, function) {				\
+-	if (cpu_feature_enabled(X86_FEATURE_FRED))			\
++	if (IS_ENABLED(CONFIG_X86_FRED))				\
+ 		fred_install_sysvec(vector, function);			\
+-	else								\
++	if (!cpu_feature_enabled(X86_FEATURE_FRED))			\
+ 		idt_install_sysvec(vector, asm_##function);		\
+ }
+ 
+diff --git a/arch/x86/include/asm/mshyperv.h b/arch/x86/include/asm/mshyperv.h
+index abc4659f5809f9383a3475e658f4a77ad500a62d..605abd02158dd640fc4f33762c9f42389176f95d 100644
+--- a/arch/x86/include/asm/mshyperv.h
++++ b/arch/x86/include/asm/mshyperv.h
+@@ -6,6 +6,7 @@
+ #include <linux/nmi.h>
+ #include <linux/msi.h>
+ #include <linux/io.h>
++#include <linux/static_call.h>
+ #include <asm/nospec-branch.h>
+ #include <asm/paravirt.h>
+ #include <asm/msr.h>
+@@ -39,16 +40,21 @@ static inline unsigned char hv_get_nmi_reason(void)
+ 	return 0;
+ }
+ 
+-#if IS_ENABLED(CONFIG_HYPERV)
+-extern bool hyperv_paravisor_present;
++extern u64 hv_tdx_hypercall(u64 control, u64 param1, u64 param2);
++extern u64 hv_snp_hypercall(u64 control, u64 param1, u64 param2);
++extern u64 hv_std_hypercall(u64 control, u64 param1, u64 param2);
+ 
++#if IS_ENABLED(CONFIG_HYPERV)
+ extern void *hv_hypercall_pg;
+ 
+ extern union hv_ghcb * __percpu *hv_ghcb_pg;
+ 
+ bool hv_isolation_type_snp(void);
+ bool hv_isolation_type_tdx(void);
+-u64 hv_tdx_hypercall(u64 control, u64 param1, u64 param2);
++
++#ifdef CONFIG_X86_64
++DECLARE_STATIC_CALL(hv_hypercall, hv_std_hypercall);
++#endif
+ 
+ /*
+  * DEFAULT INIT GPAT and SEGMENT LIMIT value in struct VMSA
+@@ -65,37 +71,15 @@ static inline u64 hv_do_hypercall(u64 control, void *input, void *output)
+ {
+ 	u64 input_address = input ? virt_to_phys(input) : 0;
+ 	u64 output_address = output ? virt_to_phys(output) : 0;
+-	u64 hv_status;
+ 
+ #ifdef CONFIG_X86_64
+-	if (hv_isolation_type_tdx() && !hyperv_paravisor_present)
+-		return hv_tdx_hypercall(control, input_address, output_address);
+-
+-	if (hv_isolation_type_snp() && !hyperv_paravisor_present) {
+-		__asm__ __volatile__("mov %[output_address], %%r8\n"
+-				     "vmmcall"
+-				     : "=a" (hv_status), ASM_CALL_CONSTRAINT,
+-				       "+c" (control), "+d" (input_address)
+-				     : [output_address] "r" (output_address)
+-				     : "cc", "memory", "r8", "r9", "r10", "r11");
+-		return hv_status;
+-	}
+-
+-	if (!hv_hypercall_pg)
+-		return U64_MAX;
+-
+-	__asm__ __volatile__("mov %[output_address], %%r8\n"
+-			     CALL_NOSPEC
+-			     : "=a" (hv_status), ASM_CALL_CONSTRAINT,
+-			       "+c" (control), "+d" (input_address)
+-			     : [output_address] "r" (output_address),
+-			       THUNK_TARGET(hv_hypercall_pg)
+-			     : "cc", "memory", "r8", "r9", "r10", "r11");
++	return static_call_mod(hv_hypercall)(control, input_address, output_address);
+ #else
+ 	u32 input_address_hi = upper_32_bits(input_address);
+ 	u32 input_address_lo = lower_32_bits(input_address);
+ 	u32 output_address_hi = upper_32_bits(output_address);
+ 	u32 output_address_lo = lower_32_bits(output_address);
++	u64 hv_status;
+ 
+ 	if (!hv_hypercall_pg)
+ 		return U64_MAX;
+@@ -108,48 +92,30 @@ static inline u64 hv_do_hypercall(u64 control, void *input, void *output)
+ 			       "D"(output_address_hi), "S"(output_address_lo),
+ 			       THUNK_TARGET(hv_hypercall_pg)
+ 			     : "cc", "memory");
+-#endif /* !x86_64 */
+ 	return hv_status;
++#endif /* !x86_64 */
+ }
+ 
+ /* Fast hypercall with 8 bytes of input and no output */
+ static inline u64 _hv_do_fast_hypercall8(u64 control, u64 input1)
+ {
+-	u64 hv_status;
+-
+ #ifdef CONFIG_X86_64
+-	if (hv_isolation_type_tdx() && !hyperv_paravisor_present)
+-		return hv_tdx_hypercall(control, input1, 0);
+-
+-	if (hv_isolation_type_snp() && !hyperv_paravisor_present) {
+-		__asm__ __volatile__(
+-				"vmmcall"
+-				: "=a" (hv_status), ASM_CALL_CONSTRAINT,
+-				"+c" (control), "+d" (input1)
+-				:: "cc", "r8", "r9", "r10", "r11");
+-	} else {
+-		__asm__ __volatile__(CALL_NOSPEC
+-				     : "=a" (hv_status), ASM_CALL_CONSTRAINT,
+-				       "+c" (control), "+d" (input1)
+-				     : THUNK_TARGET(hv_hypercall_pg)
+-				     : "cc", "r8", "r9", "r10", "r11");
+-	}
++	return static_call_mod(hv_hypercall)(control, input1, 0);
+ #else
+-	{
+-		u32 input1_hi = upper_32_bits(input1);
+-		u32 input1_lo = lower_32_bits(input1);
+-
+-		__asm__ __volatile__ (CALL_NOSPEC
+-				      : "=A"(hv_status),
+-					"+c"(input1_lo),
+-					ASM_CALL_CONSTRAINT
+-				      :	"A" (control),
+-					"b" (input1_hi),
+-					THUNK_TARGET(hv_hypercall_pg)
+-				      : "cc", "edi", "esi");
+-	}
+-#endif
++	u32 input1_hi = upper_32_bits(input1);
++	u32 input1_lo = lower_32_bits(input1);
++	u64 hv_status;
++
++	__asm__ __volatile__ (CALL_NOSPEC
++			      : "=A"(hv_status),
++			      "+c"(input1_lo),
++			      ASM_CALL_CONSTRAINT
++			      :	"A" (control),
++			      "b" (input1_hi),
++			      THUNK_TARGET(hv_hypercall_pg)
++			      : "cc", "edi", "esi");
+ 	return hv_status;
++#endif
+ }
+ 
+ static inline u64 hv_do_fast_hypercall8(u16 code, u64 input1)
+@@ -162,45 +128,24 @@ static inline u64 hv_do_fast_hypercall8(u16 code, u64 input1)
+ /* Fast hypercall with 16 bytes of input */
+ static inline u64 _hv_do_fast_hypercall16(u64 control, u64 input1, u64 input2)
+ {
+-	u64 hv_status;
+-
+ #ifdef CONFIG_X86_64
+-	if (hv_isolation_type_tdx() && !hyperv_paravisor_present)
+-		return hv_tdx_hypercall(control, input1, input2);
+-
+-	if (hv_isolation_type_snp() && !hyperv_paravisor_present) {
+-		__asm__ __volatile__("mov %[input2], %%r8\n"
+-				     "vmmcall"
+-				     : "=a" (hv_status), ASM_CALL_CONSTRAINT,
+-				       "+c" (control), "+d" (input1)
+-				     : [input2] "r" (input2)
+-				     : "cc", "r8", "r9", "r10", "r11");
+-	} else {
+-		__asm__ __volatile__("mov %[input2], %%r8\n"
+-				     CALL_NOSPEC
+-				     : "=a" (hv_status), ASM_CALL_CONSTRAINT,
+-				       "+c" (control), "+d" (input1)
+-				     : [input2] "r" (input2),
+-				       THUNK_TARGET(hv_hypercall_pg)
+-				     : "cc", "r8", "r9", "r10", "r11");
+-	}
++	return static_call_mod(hv_hypercall)(control, input1, input2);
+ #else
+-	{
+-		u32 input1_hi = upper_32_bits(input1);
+-		u32 input1_lo = lower_32_bits(input1);
+-		u32 input2_hi = upper_32_bits(input2);
+-		u32 input2_lo = lower_32_bits(input2);
+-
+-		__asm__ __volatile__ (CALL_NOSPEC
+-				      : "=A"(hv_status),
+-					"+c"(input1_lo), ASM_CALL_CONSTRAINT
+-				      :	"A" (control), "b" (input1_hi),
+-					"D"(input2_hi), "S"(input2_lo),
+-					THUNK_TARGET(hv_hypercall_pg)
+-				      : "cc");
+-	}
+-#endif
++	u32 input1_hi = upper_32_bits(input1);
++	u32 input1_lo = lower_32_bits(input1);
++	u32 input2_hi = upper_32_bits(input2);
++	u32 input2_lo = lower_32_bits(input2);
++	u64 hv_status;
++
++	__asm__ __volatile__ (CALL_NOSPEC
++			      : "=A"(hv_status),
++			      "+c"(input1_lo), ASM_CALL_CONSTRAINT
++			      :	"A" (control), "b" (input1_hi),
++			      "D"(input2_hi), "S"(input2_lo),
++			      THUNK_TARGET(hv_hypercall_pg)
++			      : "cc");
+ 	return hv_status;
++#endif
+ }
+ 
+ static inline u64 hv_do_fast_hypercall16(u16 code, u64 input1, u64 input2)
+diff --git a/arch/x86/include/asm/text-patching.h b/arch/x86/include/asm/text-patching.h
+index 5337f1be18f6e43687580ea1204fb0b102e17485..f2d142a0a862eb10cd991cbdac63961c5f464286 100644
+--- a/arch/x86/include/asm/text-patching.h
++++ b/arch/x86/include/asm/text-patching.h
+@@ -178,9 +178,9 @@ void int3_emulate_ret(struct pt_regs *regs)
+ }
+ 
+ static __always_inline
+-void int3_emulate_jcc(struct pt_regs *regs, u8 cc, unsigned long ip, unsigned long disp)
++bool __emulate_cc(unsigned long flags, u8 cc)
+ {
+-	static const unsigned long jcc_mask[6] = {
++	static const unsigned long cc_mask[6] = {
+ 		[0] = X86_EFLAGS_OF,
+ 		[1] = X86_EFLAGS_CF,
+ 		[2] = X86_EFLAGS_ZF,
+@@ -193,15 +193,21 @@ void int3_emulate_jcc(struct pt_regs *regs, u8 cc, unsigned long ip, unsigned lo
+ 	bool match;
+ 
+ 	if (cc < 0xc) {
+-		match = regs->flags & jcc_mask[cc >> 1];
++		match = flags & cc_mask[cc >> 1];
+ 	} else {
+-		match = ((regs->flags & X86_EFLAGS_SF) >> X86_EFLAGS_SF_BIT) ^
+-			((regs->flags & X86_EFLAGS_OF) >> X86_EFLAGS_OF_BIT);
++		match = ((flags & X86_EFLAGS_SF) >> X86_EFLAGS_SF_BIT) ^
++			((flags & X86_EFLAGS_OF) >> X86_EFLAGS_OF_BIT);
+ 		if (cc >= 0xe)
+-			match = match || (regs->flags & X86_EFLAGS_ZF);
++			match = match || (flags & X86_EFLAGS_ZF);
+ 	}
+ 
+-	if ((match && !invert) || (!match && invert))
++	return (match && !invert) || (!match && invert);
++}
++
++static __always_inline
++void int3_emulate_jcc(struct pt_regs *regs, u8 cc, unsigned long ip, unsigned long disp)
++{
++	if (__emulate_cc(regs->flags, cc))
+ 		ip += disp;
+ 
+ 	int3_emulate_jmp(regs, ip);
+diff --git a/arch/x86/kernel/alternative.c b/arch/x86/kernel/alternative.c
+index 79ae9cb5001906352cf9626f236e68376d87d820..8ee5ff547357a5b6166363eb1aaf3d13cf8f6b09 100644
+--- a/arch/x86/kernel/alternative.c
++++ b/arch/x86/kernel/alternative.c
+@@ -147,10 +147,10 @@ static void *its_init_thunk(void *thunk, int reg)
+ 		/*
+ 		 * When ITS uses indirect branch thunk the fineibt_paranoid
+ 		 * caller sequence doesn't fit in the caller site. So put the
+-		 * remaining part of the sequence (<ea> + JNE) into the ITS
++		 * remaining part of the sequence (UDB + JNE) into the ITS
+ 		 * thunk.
+ 		 */
+-		bytes[i++] = 0xea; /* invalid instruction */
++		bytes[i++] = 0xd6; /* UDB */
+ 		bytes[i++] = 0x75; /* JNE */
+ 		bytes[i++] = 0xfd;
+ 
+@@ -163,7 +163,7 @@ static void *its_init_thunk(void *thunk, int reg)
+ 		reg -= 8;
+ 	}
+ 	bytes[i++] = 0xff;
+-	bytes[i++] = 0xe0 + reg; /* jmp *reg */
++	bytes[i++] = 0xe0 + reg; /* JMP *reg */
+ 	bytes[i++] = 0xcc;
+ 
+ 	return thunk + offset;
+@@ -713,20 +713,33 @@ static inline bool is_jcc32(struct insn *insn)
+ #if defined(CONFIG_MITIGATION_RETPOLINE) && defined(CONFIG_OBJTOOL)
+ 
+ /*
+- * CALL/JMP *%\reg
++ * [CS]{,3} CALL/JMP *%\reg [INT3]*
+  */
+-static int emit_indirect(int op, int reg, u8 *bytes)
++static int emit_indirect(int op, int reg, u8 *bytes, int len)
+ {
++	int cs = 0, bp = 0;
+ 	int i = 0;
+ 	u8 modrm;
+ 
++	/*
++	 * Set @len to the excess bytes after writing the instruction.
++	 */
++	len -= 2 + (reg >= 8);
++	WARN_ON_ONCE(len < 0);
++
+ 	switch (op) {
+ 	case CALL_INSN_OPCODE:
+ 		modrm = 0x10; /* Reg = 2; CALL r/m */
++		/*
++		 * Additional NOP is better than prefix decode penalty.
++		 */
++		if (len <= 3)
++			cs = len;
+ 		break;
+ 
+ 	case JMP32_INSN_OPCODE:
+ 		modrm = 0x20; /* Reg = 4; JMP r/m */
++		bp = len;
+ 		break;
+ 
+ 	default:
+@@ -734,6 +747,9 @@ static int emit_indirect(int op, int reg, u8 *bytes)
+ 		return -1;
+ 	}
+ 
++	while (cs--)
++		bytes[i++] = 0x2e; /* CS-prefix */
++
+ 	if (reg >= 8) {
+ 		bytes[i++] = 0x41; /* REX.B prefix */
+ 		reg -= 8;
+@@ -745,6 +761,9 @@ static int emit_indirect(int op, int reg, u8 *bytes)
+ 	bytes[i++] = 0xff; /* opcode */
+ 	bytes[i++] = modrm;
+ 
++	while (bp--)
++		bytes[i++] = 0xcc; /* INT3 */
++
+ 	return i;
+ }
+ 
+@@ -918,20 +937,11 @@ static int patch_retpoline(void *addr, struct insn *insn, u8 *bytes)
+ 		return emit_its_trampoline(addr, insn, reg, bytes);
+ #endif
+ 
+-	ret = emit_indirect(op, reg, bytes + i);
++	ret = emit_indirect(op, reg, bytes + i, insn->length - i);
+ 	if (ret < 0)
+ 		return ret;
+ 	i += ret;
+ 
+-	/*
+-	 * The compiler is supposed to EMIT an INT3 after every unconditional
+-	 * JMP instruction due to AMD BTC. However, if the compiler is too old
+-	 * or MITIGATION_SLS isn't enabled, we still need an INT3 after
+-	 * indirect JMPs even on Intel.
+-	 */
+-	if (op == JMP32_INSN_OPCODE && i < insn->length)
+-		bytes[i++] = INT3_INSN_OPCODE;
+-
+ 	for (; i < insn->length;)
+ 		bytes[i++] = BYTES_NOP1;
+ 
+@@ -970,7 +980,7 @@ void __init_or_module noinline apply_retpolines(s32 *start, s32 *end)
+ 		case JMP32_INSN_OPCODE:
+ 			/* Check for cfi_paranoid + ITS */
+ 			dest = addr + insn.length + insn.immediate.value;
+-			if (dest[-1] == 0xea && (dest[0] & 0xf0) == 0x70) {
++			if (dest[-1] == 0xd6 && (dest[0] & 0xf0) == 0x70) {
+ 				WARN_ON_ONCE(cfi_mode != CFI_FINEIBT);
+ 				continue;
+ 			}
+@@ -1177,6 +1187,7 @@ void __init_or_module apply_seal_endbr(s32 *start, s32 *end) { }
+ #endif
+ 
+ enum cfi_mode cfi_mode __ro_after_init = __CFI_DEFAULT;
++static bool cfi_debug __ro_after_init;
+ 
+ #ifdef CONFIG_FINEIBT_BHI
+ bool cfi_bhi __ro_after_init = false;
+@@ -1259,6 +1270,8 @@ static __init int cfi_parse_cmdline(char *str)
+ 		} else if (!strcmp(str, "off")) {
+ 			cfi_mode = CFI_OFF;
+ 			cfi_rand = false;
++		} else if (!strcmp(str, "debug")) {
++			cfi_debug = true;
+ 		} else if (!strcmp(str, "kcfi")) {
+ 			cfi_mode = CFI_KCFI;
+ 		} else if (!strcmp(str, "fineibt")) {
+@@ -1266,26 +1279,26 @@ static __init int cfi_parse_cmdline(char *str)
+ 		} else if (!strcmp(str, "norand")) {
+ 			cfi_rand = false;
+ 		} else if (!strcmp(str, "warn")) {
+-			pr_alert("CFI mismatch non-fatal!\n");
++			pr_alert("CFI: mismatch non-fatal!\n");
+ 			cfi_warn = true;
+ 		} else if (!strcmp(str, "paranoid")) {
+ 			if (cfi_mode == CFI_FINEIBT) {
+ 				cfi_paranoid = true;
+ 			} else {
+-				pr_err("Ignoring paranoid; depends on fineibt.\n");
++				pr_err("CFI: ignoring paranoid; depends on fineibt.\n");
+ 			}
+ 		} else if (!strcmp(str, "bhi")) {
+ #ifdef CONFIG_FINEIBT_BHI
+ 			if (cfi_mode == CFI_FINEIBT) {
+ 				cfi_bhi = true;
+ 			} else {
+-				pr_err("Ignoring bhi; depends on fineibt.\n");
++				pr_err("CFI: ignoring bhi; depends on fineibt.\n");
+ 			}
+ #else
+-			pr_err("Ignoring bhi; depends on FINEIBT_BHI=y.\n");
++			pr_err("CFI: ignoring bhi; depends on FINEIBT_BHI=y.\n");
+ #endif
+ 		} else {
+-			pr_err("Ignoring unknown cfi option (%s).", str);
++			pr_err("CFI: Ignoring unknown option (%s).", str);
+ 		}
+ 
+ 		str = next;
+@@ -1300,9 +1313,9 @@ early_param("cfi", cfi_parse_cmdline);
+  *
+  * __cfi_\func:					__cfi_\func:
+  *	movl   $0x12345678,%eax		// 5	     endbr64			// 4
+- *	nop					     subl   $0x12345678,%r10d   // 7
+- *	nop					     jne    __cfi_\func+6	// 2
+- *	nop					     nop3			// 3
++ *	nop					     subl   $0x12345678,%eax    // 5
++ *	nop					     jne.d32,pn \func+3		// 7
++ *	nop
+  *	nop
+  *	nop
+  *	nop
+@@ -1311,34 +1324,44 @@ early_param("cfi", cfi_parse_cmdline);
+  *	nop
+  *	nop
+  *	nop
++ * \func:					\func:
++ *	endbr64					     nopl -42(%rax)
+  *
+  *
+  * caller:					caller:
+- *	movl	$(-0x12345678),%r10d	 // 6	     movl   $0x12345678,%r10d	// 6
++ *	movl	$(-0x12345678),%r10d	 // 6	     movl   $0x12345678,%eax	// 5
+  *	addl	$-15(%r11),%r10d	 // 4	     lea    -0x10(%r11),%r11	// 4
+- *	je	1f			 // 2	     nop4			// 4
++ *	je	1f			 // 2	     nop5			// 5
+  *	ud2				 // 2
+  * 1:	cs call	__x86_indirect_thunk_r11 // 6	     call   *%r11; nop3;	// 6
+  *
++ *
++ * Notably, the FineIBT sequences are crafted such that branches are presumed
++ * non-taken. This is based on Agner Fog's optimization manual, which states:
++ *
++ *  "Make conditional jumps most often not taken: The efficiency and throughput
++ *   for not-taken branches is better than for taken branches on most
++ *   processors. Therefore, it is good to place the most frequent branch first"
+  */
+ 
+ /*
+  * <fineibt_preamble_start>:
+  *  0:   f3 0f 1e fa             endbr64
+- *  4:   41 81 <ea> 78 56 34 12  sub    $0x12345678, %r10d
+- *  b:   75 f9                   jne    6 <fineibt_preamble_start+0x6>
+- *  d:   0f 1f 00                nopl   (%rax)
++ *  4:   2d 78 56 34 12          sub    $0x12345678, %eax
++ *  9:   2e 0f 85 03 00 00 00    jne,pn 13 <fineibt_preamble_start+0x13>
++ * 10:   0f 1f 40 d6             nopl   -0x2a(%rax)
+  *
+- * Note that the JNE target is the 0xEA byte inside the SUB, this decodes as
+- * (bad) on x86_64 and raises #UD.
++ * Note that the JNE target is the 0xD6 byte inside the NOPL, this decodes as
++ * UDB on x86_64 and raises #UD.
+  */
+ asm(	".pushsection .rodata				\n"
+ 	"fineibt_preamble_start:			\n"
+ 	"	endbr64					\n"
+-	"	subl	$0x12345678, %r10d		\n"
++	"	subl	$0x12345678, %eax		\n"
+ 	"fineibt_preamble_bhi:				\n"
+-	"	jne	fineibt_preamble_start+6	\n"
+-	ASM_NOP3
++	"	cs jne.d32 fineibt_preamble_start+0x13	\n"
++	"#fineibt_func:					\n"
++	"	nopl	-42(%rax)			\n"
+ 	"fineibt_preamble_end:				\n"
+ 	".popsection\n"
+ );
+@@ -1349,20 +1372,20 @@ extern u8 fineibt_preamble_end[];
+ 
+ #define fineibt_preamble_size (fineibt_preamble_end - fineibt_preamble_start)
+ #define fineibt_preamble_bhi  (fineibt_preamble_bhi - fineibt_preamble_start)
+-#define fineibt_preamble_ud   6
+-#define fineibt_preamble_hash 7
++#define fineibt_preamble_ud   0x13
++#define fineibt_preamble_hash 5
+ 
+ /*
+  * <fineibt_caller_start>:
+- *  0:   41 ba 78 56 34 12       mov    $0x12345678, %r10d
+- *  6:   4d 8d 5b f0             lea    -0x10(%r11), %r11
+- *  a:   0f 1f 40 00             nopl   0x0(%rax)
++ *  0:   b8 78 56 34 12          mov    $0x12345678, %eax
++ *  5:   4d 8d 5b f0             lea    -0x10(%r11), %r11
++ *  9:   0f 1f 44 00 00          nopl   0x0(%rax,%rax,1)
+  */
+ asm(	".pushsection .rodata			\n"
+ 	"fineibt_caller_start:			\n"
+-	"	movl	$0x12345678, %r10d	\n"
++	"	movl	$0x12345678, %eax	\n"
+ 	"	lea	-0x10(%r11), %r11	\n"
+-	ASM_NOP4
++	ASM_NOP5
+ 	"fineibt_caller_end:			\n"
+ 	".popsection				\n"
+ );
+@@ -1371,7 +1394,7 @@ extern u8 fineibt_caller_start[];
+ extern u8 fineibt_caller_end[];
+ 
+ #define fineibt_caller_size (fineibt_caller_end - fineibt_caller_start)
+-#define fineibt_caller_hash 2
++#define fineibt_caller_hash 1
+ 
+ #define fineibt_caller_jmp (fineibt_caller_size - 2)
+ 
+@@ -1388,9 +1411,9 @@ extern u8 fineibt_caller_end[];
+  * of adding a load.
+  *
+  * <fineibt_paranoid_start>:
+- *  0:   41 ba 78 56 34 12       mov    $0x12345678, %r10d
+- *  6:   45 3b 53 f7             cmp    -0x9(%r11), %r10d
+- *  a:   4d 8d 5b <f0>           lea    -0x10(%r11), %r11
++ *  0:   b8 78 56 34 12          mov    $0x12345678, %eax
++ *  5:   41 3b 43 f5             cmp    -0x11(%r11), %eax
++ *  9:   2e 4d 8d 5b <f0>        cs lea -0x10(%r11), %r11
+  *  e:   75 fd                   jne    d <fineibt_paranoid_start+0xd>
+  * 10:   41 ff d3                call   *%r11
+  * 13:   90                      nop
+@@ -1402,13 +1425,13 @@ extern u8 fineibt_caller_end[];
+  */
+ asm(	".pushsection .rodata				\n"
+ 	"fineibt_paranoid_start:			\n"
+-	"	movl	$0x12345678, %r10d		\n"
+-	"	cmpl	-9(%r11), %r10d			\n"
+-	"	lea	-0x10(%r11), %r11		\n"
++	"	mov	$0x12345678, %eax		\n"
++	"	cmpl	-11(%r11), %eax			\n"
++	"	cs lea	-0x10(%r11), %r11		\n"
++	"#fineibt_caller_size:                          \n"
+ 	"	jne	fineibt_paranoid_start+0xd	\n"
+ 	"fineibt_paranoid_ind:				\n"
+-	"	call	*%r11				\n"
+-	"	nop					\n"
++	"	cs call	*%r11				\n"
+ 	"fineibt_paranoid_end:				\n"
+ 	".popsection					\n"
+ );
+@@ -1520,51 +1543,67 @@ static int cfi_rand_preamble(s32 *start, s32 *end)
+ 	return 0;
+ }
+ 
++/*
++ * Inline the bhi-arity 1 case:
++ *
++ * __cfi_foo:
++ *  0: f3 0f 1e fa             endbr64
++ *  4: 2d 78 56 34 12          sub    $0x12345678, %eax
++ *  9: 49 0f 45 fa             cmovne %rax, %rdi
++ *  d: 2e 75 03                jne,pn    foo+0x3
++ *
++ * foo:
++ * 10: 0f 1f 40 <d6>           nopl -42(%rax)
++ *
++ * Notably, this scheme is incompatible with permissive CFI
++ * because the CMOVcc is unconditional and RDI will have been
++ * clobbered.
++ */
++asm(	".pushsection .rodata				\n"
++	"fineibt_bhi1_start:				\n"
++	"	cmovne %rax, %rdi			\n"
++	"	cs jne fineibt_bhi1_func + 0x3		\n"
++	"fineibt_bhi1_func:				\n"
++	"	nopl -42(%rax)				\n"
++	"fineibt_bhi1_end:				\n"
++	".popsection					\n"
++);
++
++extern u8 fineibt_bhi1_start[];
++extern u8 fineibt_bhi1_end[];
++
++#define fineibt_bhi1_size (fineibt_bhi1_end - fineibt_bhi1_start)
++
+ static void cfi_fineibt_bhi_preamble(void *addr, int arity)
+ {
++	u8 bytes[MAX_INSN_SIZE];
++
+ 	if (!arity)
+ 		return;
+ 
+ 	if (!cfi_warn && arity == 1) {
+-		/*
+-		 * Crazy scheme to allow arity-1 inline:
+-		 *
+-		 * __cfi_foo:
+-		 *  0: f3 0f 1e fa             endbr64
+-		 *  4: 41 81 <ea> 78 56 34 12  sub     0x12345678, %r10d
+-		 *  b: 49 0f 45 fa             cmovne  %r10, %rdi
+-		 *  f: 75 f5                   jne     __cfi_foo+6
+-		 * 11: 0f 1f 00                nopl    (%rax)
+-		 *
+-		 * Code that direct calls to foo()+0, decodes the tail end as:
+-		 *
+-		 * foo:
+-		 *  0: f5                      cmc
+-		 *  1: 0f 1f 00                nopl    (%rax)
+-		 *
+-		 * which clobbers CF, but does not affect anything ABI
+-		 * wise.
+-		 *
+-		 * Notably, this scheme is incompatible with permissive CFI
+-		 * because the CMOVcc is unconditional and RDI will have been
+-		 * clobbered.
+-		 */
+-		const u8 magic[9] = {
+-			0x49, 0x0f, 0x45, 0xfa,
+-			0x75, 0xf5,
+-			BYTES_NOP3,
+-		};
+-
+-		text_poke_early(addr + fineibt_preamble_bhi, magic, 9);
+-
++		text_poke_early(addr + fineibt_preamble_bhi,
++				fineibt_bhi1_start, fineibt_bhi1_size);
+ 		return;
+ 	}
+ 
+-	text_poke_early(addr + fineibt_preamble_bhi,
+-			text_gen_insn(CALL_INSN_OPCODE,
+-				      addr + fineibt_preamble_bhi,
+-				      __bhi_args[arity]),
+-			CALL_INSN_SIZE);
++	/*
++	 * Replace the bytes at fineibt_preamble_bhi with a CALL instruction
++	 * that lines up exactly with the end of the preamble, such that the
++	 * return address will be foo+0.
++	 *
++	 * __cfi_foo:
++	 *  0: f3 0f 1e fa             endbr64
++	 *  4: 2d 78 56 34 12          sub    $0x12345678, %eax
++	 *  9: 2e 2e e8 DD DD DD DD    cs cs call __bhi_args[arity]
++	 */
++	bytes[0] = 0x2e;
++	bytes[1] = 0x2e;
++	__text_gen_insn(bytes + 2, CALL_INSN_OPCODE,
++			addr + fineibt_preamble_bhi + 2,
++			__bhi_args[arity], CALL_INSN_SIZE);
++
++	text_poke_early(addr + fineibt_preamble_bhi, bytes, 7);
+ }
+ 
+ static int cfi_rewrite_preamble(s32 *start, s32 *end)
+@@ -1655,8 +1694,6 @@ static int cfi_rewrite_callers(s32 *start, s32 *end)
+ {
+ 	s32 *s;
+ 
+-	BUG_ON(fineibt_paranoid_size != 20);
+-
+ 	for (s = start; s < end; s++) {
+ 		void *addr = (void *)s + *s;
+ 		struct insn insn;
+@@ -1696,8 +1733,9 @@ static int cfi_rewrite_callers(s32 *start, s32 *end)
+ 			emit_paranoid_trampoline(addr + fineibt_caller_size,
+ 						 &insn, 11, bytes + fineibt_caller_size);
+ 		} else {
+-			ret = emit_indirect(op, 11, bytes + fineibt_paranoid_ind);
+-			if (WARN_ON_ONCE(ret != 3))
++			int len = fineibt_paranoid_size - fineibt_paranoid_ind;
++			ret = emit_indirect(op, 11, bytes + fineibt_paranoid_ind, len);
++			if (WARN_ON_ONCE(ret != len))
+ 				continue;
+ 		}
+ 
+@@ -1707,13 +1745,20 @@ static int cfi_rewrite_callers(s32 *start, s32 *end)
+ 	return 0;
+ }
+ 
++#define pr_cfi_debug(X...) if (cfi_debug) pr_info(X)
++
++#define FINEIBT_WARN(_f, _v) \
++	WARN_ONCE((_f) != (_v), "FineIBT: " #_f " %ld != %d\n", _f, _v)
++
+ static void __apply_fineibt(s32 *start_retpoline, s32 *end_retpoline,
+ 			    s32 *start_cfi, s32 *end_cfi, bool builtin)
+ {
+ 	int ret;
+ 
+-	if (WARN_ONCE(fineibt_preamble_size != 16,
+-		      "FineIBT preamble wrong size: %ld", fineibt_preamble_size))
++	if (FINEIBT_WARN(fineibt_preamble_size, 20)			||
++	    FINEIBT_WARN(fineibt_preamble_bhi + fineibt_bhi1_size, 20)	||
++	    FINEIBT_WARN(fineibt_caller_size, 14)			||
++	    FINEIBT_WARN(fineibt_paranoid_size, 20))
+ 		return;
+ 
+ 	if (cfi_mode == CFI_AUTO) {
+@@ -1734,6 +1779,7 @@ static void __apply_fineibt(s32 *start_retpoline, s32 *end_retpoline,
+ 	 * rewrite them. This disables all CFI. If this succeeds but any of the
+ 	 * later stages fails, we're without CFI.
+ 	 */
++	pr_cfi_debug("CFI: disabling all indirect call checking\n");
+ 	ret = cfi_disable_callers(start_retpoline, end_retpoline);
+ 	if (ret)
+ 		goto err;
+@@ -1744,43 +1790,53 @@ static void __apply_fineibt(s32 *start_retpoline, s32 *end_retpoline,
+ 			cfi_bpf_hash = cfi_rehash(cfi_bpf_hash);
+ 			cfi_bpf_subprog_hash = cfi_rehash(cfi_bpf_subprog_hash);
+ 		}
++		pr_cfi_debug("CFI: cfi_seed: 0x%08x\n", cfi_seed);
+ 
++		pr_cfi_debug("CFI: rehashing all preambles\n");
+ 		ret = cfi_rand_preamble(start_cfi, end_cfi);
+ 		if (ret)
+ 			goto err;
+ 
++		pr_cfi_debug("CFI: rehashing all indirect calls\n");
+ 		ret = cfi_rand_callers(start_retpoline, end_retpoline);
+ 		if (ret)
+ 			goto err;
++	} else {
++		pr_cfi_debug("CFI: rehashing disabled\n");
+ 	}
+ 
+ 	switch (cfi_mode) {
+ 	case CFI_OFF:
+ 		if (builtin)
+-			pr_info("Disabling CFI\n");
++			pr_info("CFI: disabled\n");
+ 		return;
+ 
+ 	case CFI_KCFI:
++		pr_cfi_debug("CFI: re-enabling all indirect call checking\n");
+ 		ret = cfi_enable_callers(start_retpoline, end_retpoline);
+ 		if (ret)
+ 			goto err;
+ 
+ 		if (builtin)
+-			pr_info("Using kCFI\n");
++			pr_info("CFI: Using %sretpoline kCFI\n",
++				cfi_rand ? "rehashed " : "");
+ 		return;
+ 
+ 	case CFI_FINEIBT:
++		pr_cfi_debug("CFI: adding FineIBT to all preambles\n");
+ 		/* place the FineIBT preamble at func()-16 */
+ 		ret = cfi_rewrite_preamble(start_cfi, end_cfi);
+ 		if (ret)
+ 			goto err;
+ 
+ 		/* rewrite the callers to target func()-16 */
++		pr_cfi_debug("CFI: rewriting indirect call sites to use FineIBT\n");
+ 		ret = cfi_rewrite_callers(start_retpoline, end_retpoline);
+ 		if (ret)
+ 			goto err;
+ 
+ 		/* now that nobody targets func()+0, remove ENDBR there */
++		pr_cfi_debug("CFI: removing old endbr insns\n");
+ 		cfi_rewrite_endbr(start_cfi, end_cfi);
+ 
+ 		if (builtin) {
+@@ -1823,11 +1879,11 @@ static void poison_cfi(void *addr)
+ 
+ 		/*
+ 		 * __cfi_\func:
+-		 *	osp nopl (%rax)
+-		 *	subl	$0, %r10d
+-		 *	jz	1f
+-		 *	ud2
+-		 * 1:	nop
++		 *	nopl	-42(%rax)
++		 *	sub	$0, %eax
++		 *	jne	\func+3
++		 * \func:
++		 *	nopl	-42(%rax)
+ 		 */
+ 		poison_endbr(addr);
+ 		poison_hash(addr + fineibt_preamble_hash);
+@@ -1853,12 +1909,14 @@ static void poison_cfi(void *addr)
+ 	}
+ }
+ 
++#define fineibt_prefix_size (fineibt_preamble_size - ENDBR_INSN_SIZE)
++
+ /*
+- * When regs->ip points to a 0xEA byte in the FineIBT preamble,
++ * When regs->ip points to a 0xD6 byte in the FineIBT preamble,
+  * return true and fill out target and type.
+  *
+  * We check the preamble by checking for the ENDBR instruction relative to the
+- * 0xEA instruction.
++ * UDB instruction.
+  */
+ static bool decode_fineibt_preamble(struct pt_regs *regs, unsigned long *target, u32 *type)
+ {
+@@ -1868,10 +1926,10 @@ static bool decode_fineibt_preamble(struct pt_regs *regs, unsigned long *target,
+ 	if (!exact_endbr((void *)addr))
+ 		return false;
+ 
+-	*target = addr + fineibt_preamble_size;
++	*target = addr + fineibt_prefix_size;
+ 
+ 	__get_kernel_nofault(&hash, addr + fineibt_preamble_hash, u32, Efault);
+-	*type = (u32)regs->r10 + hash;
++	*type = (u32)regs->ax + hash;
+ 
+ 	/*
+ 	 * Since regs->ip points to the middle of an instruction; it cannot
+@@ -1909,12 +1967,12 @@ static bool decode_fineibt_bhi(struct pt_regs *regs, unsigned long *target, u32
+ 	__get_kernel_nofault(&addr, regs->sp, unsigned long, Efault);
+ 	*target = addr;
+ 
+-	addr -= fineibt_preamble_size;
++	addr -= fineibt_prefix_size;
+ 	if (!exact_endbr((void *)addr))
+ 		return false;
+ 
+ 	__get_kernel_nofault(&hash, addr + fineibt_preamble_hash, u32, Efault);
+-	*type = (u32)regs->r10 + hash;
++	*type = (u32)regs->ax + hash;
+ 
+ 	/*
+ 	 * The UD2 sites are constructed with a RET immediately following,
+@@ -1931,7 +1989,7 @@ static bool is_paranoid_thunk(unsigned long addr)
+ 	u32 thunk;
+ 
+ 	__get_kernel_nofault(&thunk, (u32 *)addr, u32, Efault);
+-	return (thunk & 0x00FFFFFF) == 0xfd75ea;
++	return (thunk & 0x00FFFFFF) == 0xfd75d6;
+ 
+ Efault:
+ 	return false;
+@@ -1939,8 +1997,7 @@ static bool is_paranoid_thunk(unsigned long addr)
+ 
+ /*
+  * regs->ip points to a LOCK Jcc.d8 instruction from the fineibt_paranoid_start[]
+- * sequence, or to an invalid instruction (0xea) + Jcc.d8 for cfi_paranoid + ITS
+- * thunk.
++ * sequence, or to UDB + Jcc.d8 for cfi_paranoid + ITS thunk.
+  */
+ static bool decode_fineibt_paranoid(struct pt_regs *regs, unsigned long *target, u32 *type)
+ {
+@@ -1950,8 +2007,8 @@ static bool decode_fineibt_paranoid(struct pt_regs *regs, unsigned long *target,
+ 		return false;
+ 
+ 	if (is_cfi_trap(addr + fineibt_caller_size - LEN_UD2)) {
+-		*target = regs->r11 + fineibt_preamble_size;
+-		*type = regs->r10;
++		*target = regs->r11 + fineibt_prefix_size;
++		*type = regs->ax;
+ 
+ 		/*
+ 		 * Since the trapping instruction is the exact, but LOCK prefixed,
+@@ -1963,14 +2020,14 @@ static bool decode_fineibt_paranoid(struct pt_regs *regs, unsigned long *target,
+ 	/*
+ 	 * The cfi_paranoid + ITS thunk combination results in:
+ 	 *
+-	 *  0:   41 ba 78 56 34 12       mov    $0x12345678, %r10d
+-	 *  6:   45 3b 53 f7             cmp    -0x9(%r11), %r10d
+-	 *  a:   4d 8d 5b f0             lea    -0x10(%r11), %r11
++	 *  0:   b8 78 56 34 12          mov    $0x12345678, %eax
++	 *  5:   41 3b 43 f7             cmp    -11(%r11), %eax
++	 *  a:   2e 3d 8d 5b f0          cs lea -0x10(%r11), %r11
+ 	 *  e:   2e e8 XX XX XX XX	 cs call __x86_indirect_paranoid_thunk_r11
+ 	 *
+ 	 * Where the paranoid_thunk looks like:
+ 	 *
+-	 *  1d:  <ea>                    (bad)
++	 *  1d:  <d6>                    udb
+ 	 *  __x86_indirect_paranoid_thunk_r11:
+ 	 *  1e:  75 fd                   jne 1d
+ 	 *  __x86_indirect_its_thunk_r11:
+@@ -1979,8 +2036,8 @@ static bool decode_fineibt_paranoid(struct pt_regs *regs, unsigned long *target,
+ 	 *
+ 	 */
+ 	if (is_paranoid_thunk(regs->ip)) {
+-		*target = regs->r11 + fineibt_preamble_size;
+-		*type = regs->r10;
++		*target = regs->r11 + fineibt_prefix_size;
++		*type = regs->ax;
+ 
+ 		regs->ip = *target;
+ 		return true;
+@@ -2005,6 +2062,8 @@ bool decode_fineibt_insn(struct pt_regs *regs, unsigned long *target, u32 *type)
+ static void __apply_fineibt(s32 *start_retpoline, s32 *end_retpoline,
+ 			    s32 *start_cfi, s32 *end_cfi, bool builtin)
+ {
++	if (IS_ENABLED(CONFIG_CFI) && builtin)
++		pr_info("CFI: Using standard kCFI\n");
+ }
+ 
+ #ifdef CONFIG_X86_KERNEL_IBT
+@@ -2321,6 +2380,7 @@ void __init alternative_instructions(void)
+ 
+ 	__apply_fineibt(__retpoline_sites, __retpoline_sites_end,
+ 			__cfi_sites, __cfi_sites_end, true);
++	cfi_debug = false;
+ 
+ 	/*
+ 	 * Rewrite the retpolines, must be done before alternatives since
+diff --git a/arch/x86/kernel/asm-offsets.c b/arch/x86/kernel/asm-offsets.c
+index 6259b474073bc5a22f57dc4e6dfdad73e5e2dadf..32ba599a51f888c01dcad0f96ecd19f277c5a731 100644
+--- a/arch/x86/kernel/asm-offsets.c
++++ b/arch/x86/kernel/asm-offsets.c
+@@ -102,6 +102,7 @@ static void __used common(void)
+ 
+ 	BLANK();
+ 	DEFINE(PTREGS_SIZE, sizeof(struct pt_regs));
++	OFFSET(C_PTREGS_SIZE, pt_regs, orig_ax);
+ 
+ 	/* TLB state for the entry code */
+ 	OFFSET(TLB_STATE_user_pcid_flush_mask, tlb_state, user_pcid_flush_mask);
+diff --git a/arch/x86/kernel/cfi.c b/arch/x86/kernel/cfi.c
+index 77086cf565ec14ea9bfbbc5b0850f3b9158b92d9..638eb5c933e00977500cbd8f61265e8613f1751c 100644
+--- a/arch/x86/kernel/cfi.c
++++ b/arch/x86/kernel/cfi.c
+@@ -27,7 +27,7 @@ static bool decode_cfi_insn(struct pt_regs *regs, unsigned long *target,
+ 	 * for indirect call checks:
+ 	 *
+ 	 *   movl    -<id>, %r10d       ; 6 bytes
+-	 *   addl    -4(%reg), %r10d    ; 4 bytes
++	 *   addl    -<pos>(%reg), %r10d; 4 bytes
+ 	 *   je      .Ltmp1             ; 2 bytes
+ 	 *   ud2                        ; <- regs->ip
+ 	 *   .Ltmp1:
+diff --git a/arch/x86/kernel/cpu/mshyperv.c b/arch/x86/kernel/cpu/mshyperv.c
+index 25773af116bc41837b8bfd4333c5b40e7ef7a518..c4febdbcfe4d8a0177fccbfdba020f22e22b5457 100644
+--- a/arch/x86/kernel/cpu/mshyperv.c
++++ b/arch/x86/kernel/cpu/mshyperv.c
+@@ -38,10 +38,6 @@
+ bool hv_nested;
+ struct ms_hyperv_info ms_hyperv;
+ 
+-/* Used in modules via hv_do_hypercall(): see arch/x86/include/asm/mshyperv.h */
+-bool hyperv_paravisor_present __ro_after_init;
+-EXPORT_SYMBOL_GPL(hyperv_paravisor_present);
+-
+ #if IS_ENABLED(CONFIG_HYPERV)
+ static inline unsigned int hv_get_nested_msr(unsigned int reg)
+ {
+@@ -288,8 +284,18 @@ static void __init x86_setup_ops_for_tsc_pg_clock(void)
+ 	old_restore_sched_clock_state = x86_platform.restore_sched_clock_state;
+ 	x86_platform.restore_sched_clock_state = hv_restore_sched_clock_state;
+ }
++
++#ifdef CONFIG_X86_64
++DEFINE_STATIC_CALL(hv_hypercall, hv_std_hypercall);
++EXPORT_STATIC_CALL_TRAMP_GPL(hv_hypercall);
++#define hypercall_update(hc) static_call_update(hv_hypercall, hc)
++#endif
+ #endif /* CONFIG_HYPERV */
+ 
++#ifndef hypercall_update
++#define hypercall_update(hc) (void)hc
++#endif
++
+ static uint32_t  __init ms_hyperv_platform(void)
+ {
+ 	u32 eax;
+@@ -484,14 +490,14 @@ static void __init ms_hyperv_init_platform(void)
+ 			ms_hyperv.shared_gpa_boundary =
+ 				BIT_ULL(ms_hyperv.shared_gpa_boundary_bits);
+ 
+-		hyperv_paravisor_present = !!ms_hyperv.paravisor_present;
+-
+ 		pr_info("Hyper-V: Isolation Config: Group A 0x%x, Group B 0x%x\n",
+ 			ms_hyperv.isolation_config_a, ms_hyperv.isolation_config_b);
+ 
+ 
+ 		if (hv_get_isolation_type() == HV_ISOLATION_TYPE_SNP) {
+ 			static_branch_enable(&isolation_type_snp);
++			if (!ms_hyperv.paravisor_present)
++				hypercall_update(hv_snp_hypercall);
+ 		} else if (hv_get_isolation_type() == HV_ISOLATION_TYPE_TDX) {
+ 			static_branch_enable(&isolation_type_tdx);
+ 
+@@ -499,6 +505,7 @@ static void __init ms_hyperv_init_platform(void)
+ 			ms_hyperv.hints &= ~HV_X64_APIC_ACCESS_RECOMMENDED;
+ 
+ 			if (!ms_hyperv.paravisor_present) {
++				hypercall_update(hv_tdx_hypercall);
+ 				/*
+ 				 * Mark the Hyper-V TSC page feature as disabled
+ 				 * in a TDX VM without paravisor so that the
+diff --git a/arch/x86/kernel/irqinit.c b/arch/x86/kernel/irqinit.c
+index f79c5edc0b892da8e3dff9afda2324ae0dae5944..6ab9eac64670acf8ce8a96dc78c4649057b8907e 100644
+--- a/arch/x86/kernel/irqinit.c
++++ b/arch/x86/kernel/irqinit.c
+@@ -97,9 +97,11 @@ void __init native_init_IRQ(void)
+ 	/* Execute any quirks before the call gates are initialised: */
+ 	x86_init.irqs.pre_vector_init();
+ 
+-	if (cpu_feature_enabled(X86_FEATURE_FRED))
++	/* FRED's IRQ path may be used even if FRED isn't fully enabled. */
++	if (IS_ENABLED(CONFIG_X86_FRED))
+ 		fred_complete_exception_setup();
+-	else
++
++	if (!cpu_feature_enabled(X86_FEATURE_FRED))
+ 		idt_setup_apic_and_irq_gates();
+ 
+ 	lapic_assign_system_vectors();
+diff --git a/arch/x86/kernel/machine_kexec_64.c b/arch/x86/kernel/machine_kexec_64.c
+index 15088d14904fc88f853060121ea1a41765e6a5fa..201137b98fb8e8c5f1dd33964747f4c49f012dc9 100644
+--- a/arch/x86/kernel/machine_kexec_64.c
++++ b/arch/x86/kernel/machine_kexec_64.c
+@@ -479,6 +479,10 @@ void __nocfi machine_kexec(struct kimage *image)
+ 
+ 	__ftrace_enabled_restore(save_ftrace_enabled);
+ }
++/*
++ * Handover to the next kernel, no CFI concern.
++ */
++ANNOTATE_NOCFI_SYM(machine_kexec);
+ 
+ /* arch-dependent functionality related to kexec file-based syscall */
+ 
+diff --git a/arch/x86/kernel/traps.c b/arch/x86/kernel/traps.c
+index 36354b4705905a32a45ee92c994ccabf55acb4b4..6b22611e69cc8aa87716c3dcdaf44ba33db0fc2b 100644
+--- a/arch/x86/kernel/traps.c
++++ b/arch/x86/kernel/traps.c
+@@ -97,7 +97,7 @@ __always_inline int is_valid_bugaddr(unsigned long addr)
+  * Check for UD1 or UD2, accounting for Address Size Override Prefixes.
+  * If it's a UD1, further decode to determine its use:
+  *
+- * FineIBT:      ea                      (bad)
++ * FineIBT:      d6                      udb
+  * FineIBT:      f0 75 f9                lock jne . - 6
+  * UBSan{0}:     67 0f b9 00             ud1    (%eax),%eax
+  * UBSan{10}:    67 0f b9 40 10          ud1    0x10(%eax),%eax
+@@ -130,9 +130,9 @@ __always_inline int decode_bug(unsigned long addr, s32 *imm, int *len)
+ 		WARN_ON_ONCE(!lock);
+ 		return BUG_LOCK;
+ 
+-	case 0xea:
++	case 0xd6:
+ 		*len = addr - start;
+-		return BUG_EA;
++		return BUG_UDB;
+ 
+ 	case OPCODE_ESCAPE:
+ 		break;
+@@ -341,7 +341,7 @@ static noinstr bool handle_bug(struct pt_regs *regs)
+ 		}
+ 		fallthrough;
+ 
+-	case BUG_EA:
++	case BUG_UDB:
+ 	case BUG_LOCK:
+ 		if (handle_cfi_failure(regs) == BUG_TRAP_TYPE_WARN) {
+ 			handled = true;
+diff --git a/arch/x86/kvm/Kconfig b/arch/x86/kvm/Kconfig
+index 67d4f23bab660b0b943c5af593f71450cc2d82d6..278f08194ec87b9481500b8b800c3ccec1c2dc76 100644
+--- a/arch/x86/kvm/Kconfig
++++ b/arch/x86/kvm/Kconfig
+@@ -96,6 +96,7 @@ config KVM_SW_PROTECTED_VM
+ config KVM_INTEL
+ 	tristate "KVM for Intel (and compatible) processors support"
+ 	depends on KVM && IA32_FEAT_CTL
++	select X86_FRED if X86_64
+ 	help
+ 	  Provides support for KVM on processors equipped with Intel's VT
+ 	  extensions, a.k.a. Virtual Machine Extensions (VMX).
+diff --git a/arch/x86/kvm/emulate.c b/arch/x86/kvm/emulate.c
+index 59f93f68718a0a77716378424e5ed104afe6bd58..4e3da5b497b85c32ab9de1cff9b941252ad8699e 100644
+--- a/arch/x86/kvm/emulate.c
++++ b/arch/x86/kvm/emulate.c
+@@ -26,6 +26,7 @@
+ #include <asm/debugreg.h>
+ #include <asm/nospec-branch.h>
+ #include <asm/ibt.h>
++#include <asm/text-patching.h>
+ 
+ #include "x86.h"
+ #include "tss.h"
+@@ -166,7 +167,6 @@
+ #define Unaligned   ((u64)2 << 41)  /* Explicitly unaligned (e.g. MOVDQU) */
+ #define Avx         ((u64)3 << 41)  /* Advanced Vector Extensions */
+ #define Aligned16   ((u64)4 << 41)  /* Aligned to 16 byte boundary (e.g. FXSAVE) */
+-#define Fastop      ((u64)1 << 44)  /* Use opcode::u.fastop */
+ #define NoWrite     ((u64)1 << 45)  /* No writeback */
+ #define SrcWrite    ((u64)1 << 46)  /* Write back src operand */
+ #define NoMod	    ((u64)1 << 47)  /* Mod field is ignored */
+@@ -203,7 +203,6 @@ struct opcode {
+ 		const struct escape *esc;
+ 		const struct instr_dual *idual;
+ 		const struct mode_dual *mdual;
+-		void (*fastop)(struct fastop *fake);
+ 	} u;
+ 	int (*check_perm)(struct x86_emulate_ctxt *ctxt);
+ };
+@@ -267,186 +266,130 @@ static void invalidate_registers(struct x86_emulate_ctxt *ctxt)
+ 		     X86_EFLAGS_PF|X86_EFLAGS_CF)
+ 
+ #ifdef CONFIG_X86_64
+-#define ON64(x) x
++#define ON64(x...) x
+ #else
+-#define ON64(x)
++#define ON64(x...)
+ #endif
+ 
+-/*
+- * fastop functions have a special calling convention:
+- *
+- * dst:    rax        (in/out)
+- * src:    rdx        (in/out)
+- * src2:   rcx        (in)
+- * flags:  rflags     (in/out)
+- * ex:     rsi        (in:fastop pointer, out:zero if exception)
+- *
+- * Moreover, they are all exactly FASTOP_SIZE bytes long, so functions for
+- * different operand sizes can be reached by calculation, rather than a jump
+- * table (which would be bigger than the code).
+- *
+- * The 16 byte alignment, considering 5 bytes for the RET thunk, 3 for ENDBR
+- * and 1 for the straight line speculation INT3, leaves 7 bytes for the
+- * body of the function.  Currently none is larger than 4.
+- */
+-static int fastop(struct x86_emulate_ctxt *ctxt, fastop_t fop);
+-
+-#define FASTOP_SIZE	16
+-
+-#define __FOP_FUNC(name) \
+-	".align " __stringify(FASTOP_SIZE) " \n\t" \
+-	".type " name ", @function \n\t" \
+-	name ":\n\t" \
+-	ASM_ENDBR \
+-	IBT_NOSEAL(name)
+-
+-#define FOP_FUNC(name) \
+-	__FOP_FUNC(#name)
+-
+-#define __FOP_RET(name) \
+-	"11: " ASM_RET \
+-	".size " name ", .-" name "\n\t"
+-
+-#define FOP_RET(name) \
+-	__FOP_RET(#name)
+-
+-#define __FOP_START(op, align) \
+-	extern void em_##op(struct fastop *fake); \
+-	asm(".pushsection .text, \"ax\" \n\t" \
+-	    ".global em_" #op " \n\t" \
+-	    ".align " __stringify(align) " \n\t" \
+-	    "em_" #op ":\n\t"
+-
+-#define FOP_START(op) __FOP_START(op, FASTOP_SIZE)
+-
+-#define FOP_END \
+-	    ".popsection")
+-
+-#define __FOPNOP(name) \
+-	__FOP_FUNC(name) \
+-	__FOP_RET(name)
+-
+-#define FOPNOP() \
+-	__FOPNOP(__stringify(__UNIQUE_ID(nop)))
+-
+-#define FOP1E(op,  dst) \
+-	__FOP_FUNC(#op "_" #dst) \
+-	"10: " #op " %" #dst " \n\t" \
+-	__FOP_RET(#op "_" #dst)
+-
+-#define FOP1EEX(op,  dst) \
+-	FOP1E(op, dst) _ASM_EXTABLE_TYPE_REG(10b, 11b, EX_TYPE_ZERO_REG, %%esi)
+-
+-#define FASTOP1(op) \
+-	FOP_START(op) \
+-	FOP1E(op##b, al) \
+-	FOP1E(op##w, ax) \
+-	FOP1E(op##l, eax) \
+-	ON64(FOP1E(op##q, rax))	\
+-	FOP_END
+-
+-/* 1-operand, using src2 (for MUL/DIV r/m) */
+-#define FASTOP1SRC2(op, name) \
+-	FOP_START(name) \
+-	FOP1E(op, cl) \
+-	FOP1E(op, cx) \
+-	FOP1E(op, ecx) \
+-	ON64(FOP1E(op, rcx)) \
+-	FOP_END
+-
+-/* 1-operand, using src2 (for MUL/DIV r/m), with exceptions */
+-#define FASTOP1SRC2EX(op, name) \
+-	FOP_START(name) \
+-	FOP1EEX(op, cl) \
+-	FOP1EEX(op, cx) \
+-	FOP1EEX(op, ecx) \
+-	ON64(FOP1EEX(op, rcx)) \
+-	FOP_END
+-
+-#define FOP2E(op,  dst, src)	   \
+-	__FOP_FUNC(#op "_" #dst "_" #src) \
+-	#op " %" #src ", %" #dst " \n\t" \
+-	__FOP_RET(#op "_" #dst "_" #src)
+-
+-#define FASTOP2(op) \
+-	FOP_START(op) \
+-	FOP2E(op##b, al, dl) \
+-	FOP2E(op##w, ax, dx) \
+-	FOP2E(op##l, eax, edx) \
+-	ON64(FOP2E(op##q, rax, rdx)) \
+-	FOP_END
+-
+-/* 2 operand, word only */
+-#define FASTOP2W(op) \
+-	FOP_START(op) \
+-	FOPNOP() \
+-	FOP2E(op##w, ax, dx) \
+-	FOP2E(op##l, eax, edx) \
+-	ON64(FOP2E(op##q, rax, rdx)) \
+-	FOP_END
+-
+-/* 2 operand, src is CL */
+-#define FASTOP2CL(op) \
+-	FOP_START(op) \
+-	FOP2E(op##b, al, cl) \
+-	FOP2E(op##w, ax, cl) \
+-	FOP2E(op##l, eax, cl) \
+-	ON64(FOP2E(op##q, rax, cl)) \
+-	FOP_END
+-
+-/* 2 operand, src and dest are reversed */
+-#define FASTOP2R(op, name) \
+-	FOP_START(name) \
+-	FOP2E(op##b, dl, al) \
+-	FOP2E(op##w, dx, ax) \
+-	FOP2E(op##l, edx, eax) \
+-	ON64(FOP2E(op##q, rdx, rax)) \
+-	FOP_END
+-
+-#define FOP3E(op,  dst, src, src2) \
+-	__FOP_FUNC(#op "_" #dst "_" #src "_" #src2) \
+-	#op " %" #src2 ", %" #src ", %" #dst " \n\t"\
+-	__FOP_RET(#op "_" #dst "_" #src "_" #src2)
+-
+-/* 3-operand, word-only, src2=cl */
+-#define FASTOP3WCL(op) \
+-	FOP_START(op) \
+-	FOPNOP() \
+-	FOP3E(op##w, ax, dx, cl) \
+-	FOP3E(op##l, eax, edx, cl) \
+-	ON64(FOP3E(op##q, rax, rdx, cl)) \
+-	FOP_END
+-
+-/* Special case for SETcc - 1 instruction per cc */
+-#define FOP_SETCC(op) \
+-	FOP_FUNC(op) \
+-	#op " %al \n\t" \
+-	FOP_RET(op)
+-
+-FOP_START(setcc)
+-FOP_SETCC(seto)
+-FOP_SETCC(setno)
+-FOP_SETCC(setc)
+-FOP_SETCC(setnc)
+-FOP_SETCC(setz)
+-FOP_SETCC(setnz)
+-FOP_SETCC(setbe)
+-FOP_SETCC(setnbe)
+-FOP_SETCC(sets)
+-FOP_SETCC(setns)
+-FOP_SETCC(setp)
+-FOP_SETCC(setnp)
+-FOP_SETCC(setl)
+-FOP_SETCC(setnl)
+-FOP_SETCC(setle)
+-FOP_SETCC(setnle)
+-FOP_END;
+-
+-FOP_START(salc)
+-FOP_FUNC(salc)
+-"pushf; sbb %al, %al; popf \n\t"
+-FOP_RET(salc)
+-FOP_END;
++#define EM_ASM_START(op) \
++static int em_##op(struct x86_emulate_ctxt *ctxt) \
++{ \
++	unsigned long flags = (ctxt->eflags & EFLAGS_MASK) | X86_EFLAGS_IF; \
++	int bytes = 1, ok = 1; \
++	if (!(ctxt->d & ByteOp)) \
++		bytes = ctxt->dst.bytes; \
++	switch (bytes) {
++
++#define __EM_ASM(str) \
++		asm("push %[flags]; popf \n\t" \
++		    "10: " str \
++		    "pushf; pop %[flags] \n\t" \
++		    "11: \n\t" \
++		    : "+a" (ctxt->dst.val), \
++		      "+d" (ctxt->src.val), \
++		      [flags] "+D" (flags), \
++		      "+S" (ok) \
++		    : "c" (ctxt->src2.val))
++
++#define __EM_ASM_1(op, dst) \
++		__EM_ASM(#op " %%" #dst " \n\t")
++
++#define __EM_ASM_1_EX(op, dst) \
++		__EM_ASM(#op " %%" #dst " \n\t" \
++			 _ASM_EXTABLE_TYPE_REG(10b, 11f, EX_TYPE_ZERO_REG, %%esi))
++
++#define __EM_ASM_2(op, dst, src) \
++		__EM_ASM(#op " %%" #src ", %%" #dst " \n\t")
++
++#define __EM_ASM_3(op, dst, src, src2) \
++		__EM_ASM(#op " %%" #src2 ", %%" #src ", %%" #dst " \n\t")
++
++#define EM_ASM_END \
++	} \
++	ctxt->eflags = (ctxt->eflags & ~EFLAGS_MASK) | (flags & EFLAGS_MASK); \
++	return !ok ? emulate_de(ctxt) : X86EMUL_CONTINUE; \
++}
++
++/* 1-operand, using "a" (dst) */
++#define EM_ASM_1(op) \
++	EM_ASM_START(op) \
++	case 1: __EM_ASM_1(op##b, al); break; \
++	case 2: __EM_ASM_1(op##w, ax); break; \
++	case 4: __EM_ASM_1(op##l, eax); break; \
++	ON64(case 8: __EM_ASM_1(op##q, rax); break;) \
++	EM_ASM_END
++
++/* 1-operand, using "c" (src2) */
++#define EM_ASM_1SRC2(op, name) \
++	EM_ASM_START(name) \
++	case 1: __EM_ASM_1(op##b, cl); break; \
++	case 2: __EM_ASM_1(op##w, cx); break; \
++	case 4: __EM_ASM_1(op##l, ecx); break; \
++	ON64(case 8: __EM_ASM_1(op##q, rcx); break;) \
++	EM_ASM_END
++
++/* 1-operand, using "c" (src2) with exception */
++#define EM_ASM_1SRC2EX(op, name) \
++	EM_ASM_START(name) \
++	case 1: __EM_ASM_1_EX(op##b, cl); break; \
++	case 2: __EM_ASM_1_EX(op##w, cx); break; \
++	case 4: __EM_ASM_1_EX(op##l, ecx); break; \
++	ON64(case 8: __EM_ASM_1_EX(op##q, rcx); break;) \
++	EM_ASM_END
++
++/* 2-operand, using "a" (dst), "d" (src) */
++#define EM_ASM_2(op) \
++	EM_ASM_START(op) \
++	case 1: __EM_ASM_2(op##b, al, dl); break; \
++	case 2: __EM_ASM_2(op##w, ax, dx); break; \
++	case 4: __EM_ASM_2(op##l, eax, edx); break; \
++	ON64(case 8: __EM_ASM_2(op##q, rax, rdx); break;) \
++	EM_ASM_END
++
++/* 2-operand, reversed */
++#define EM_ASM_2R(op, name) \
++	EM_ASM_START(name) \
++	case 1: __EM_ASM_2(op##b, dl, al); break; \
++	case 2: __EM_ASM_2(op##w, dx, ax); break; \
++	case 4: __EM_ASM_2(op##l, edx, eax); break; \
++	ON64(case 8: __EM_ASM_2(op##q, rdx, rax); break;) \
++	EM_ASM_END
++
++/* 2-operand, word only (no byte op) */
++#define EM_ASM_2W(op) \
++	EM_ASM_START(op) \
++	case 1: break; \
++	case 2: __EM_ASM_2(op##w, ax, dx); break; \
++	case 4: __EM_ASM_2(op##l, eax, edx); break; \
++	ON64(case 8: __EM_ASM_2(op##q, rax, rdx); break;) \
++	EM_ASM_END
++
++/* 2-operand, using "a" (dst) and CL (src2) */
++#define EM_ASM_2CL(op) \
++	EM_ASM_START(op) \
++	case 1: __EM_ASM_2(op##b, al, cl); break; \
++	case 2: __EM_ASM_2(op##w, ax, cl); break; \
++	case 4: __EM_ASM_2(op##l, eax, cl); break; \
++	ON64(case 8: __EM_ASM_2(op##q, rax, cl); break;) \
++	EM_ASM_END
++
++/* 3-operand, using "a" (dst), "d" (src) and CL (src2) */
++#define EM_ASM_3WCL(op) \
++	EM_ASM_START(op) \
++	case 1: break; \
++	case 2: __EM_ASM_3(op##w, ax, dx, cl); break; \
++	case 4: __EM_ASM_3(op##l, eax, edx, cl); break; \
++	ON64(case 8: __EM_ASM_3(op##q, rax, rdx, cl); break;) \
++	EM_ASM_END
++
++static int em_salc(struct x86_emulate_ctxt *ctxt)
++{
++	/*
++	 * Set AL 0xFF if CF is set, or 0x00 when clear.
++	 */
++	ctxt->dst.val = 0xFF * !!(ctxt->eflags & X86_EFLAGS_CF);
++	return X86EMUL_CONTINUE;
++}
+ 
+ /*
+  * XXX: inoutclob user must know where the argument is being expanded.
+@@ -1007,56 +950,55 @@ static int read_descriptor(struct x86_emulate_ctxt *ctxt,
+ 	return rc;
+ }
+ 
+-FASTOP2(add);
+-FASTOP2(or);
+-FASTOP2(adc);
+-FASTOP2(sbb);
+-FASTOP2(and);
+-FASTOP2(sub);
+-FASTOP2(xor);
+-FASTOP2(cmp);
+-FASTOP2(test);
+-
+-FASTOP1SRC2(mul, mul_ex);
+-FASTOP1SRC2(imul, imul_ex);
+-FASTOP1SRC2EX(div, div_ex);
+-FASTOP1SRC2EX(idiv, idiv_ex);
+-
+-FASTOP3WCL(shld);
+-FASTOP3WCL(shrd);
+-
+-FASTOP2W(imul);
+-
+-FASTOP1(not);
+-FASTOP1(neg);
+-FASTOP1(inc);
+-FASTOP1(dec);
+-
+-FASTOP2CL(rol);
+-FASTOP2CL(ror);
+-FASTOP2CL(rcl);
+-FASTOP2CL(rcr);
+-FASTOP2CL(shl);
+-FASTOP2CL(shr);
+-FASTOP2CL(sar);
+-
+-FASTOP2W(bsf);
+-FASTOP2W(bsr);
+-FASTOP2W(bt);
+-FASTOP2W(bts);
+-FASTOP2W(btr);
+-FASTOP2W(btc);
+-
+-FASTOP2(xadd);
+-
+-FASTOP2R(cmp, cmp_r);
++EM_ASM_2(add);
++EM_ASM_2(or);
++EM_ASM_2(adc);
++EM_ASM_2(sbb);
++EM_ASM_2(and);
++EM_ASM_2(sub);
++EM_ASM_2(xor);
++EM_ASM_2(cmp);
++EM_ASM_2(test);
++EM_ASM_2(xadd);
++
++EM_ASM_1SRC2(mul, mul_ex);
++EM_ASM_1SRC2(imul, imul_ex);
++EM_ASM_1SRC2EX(div, div_ex);
++EM_ASM_1SRC2EX(idiv, idiv_ex);
++
++EM_ASM_3WCL(shld);
++EM_ASM_3WCL(shrd);
++
++EM_ASM_2W(imul);
++
++EM_ASM_1(not);
++EM_ASM_1(neg);
++EM_ASM_1(inc);
++EM_ASM_1(dec);
++
++EM_ASM_2CL(rol);
++EM_ASM_2CL(ror);
++EM_ASM_2CL(rcl);
++EM_ASM_2CL(rcr);
++EM_ASM_2CL(shl);
++EM_ASM_2CL(shr);
++EM_ASM_2CL(sar);
++
++EM_ASM_2W(bsf);
++EM_ASM_2W(bsr);
++EM_ASM_2W(bt);
++EM_ASM_2W(bts);
++EM_ASM_2W(btr);
++EM_ASM_2W(btc);
++
++EM_ASM_2R(cmp, cmp_r);
+ 
+ static int em_bsf_c(struct x86_emulate_ctxt *ctxt)
+ {
+ 	/* If src is zero, do not writeback, but update flags */
+ 	if (ctxt->src.val == 0)
+ 		ctxt->dst.type = OP_NONE;
+-	return fastop(ctxt, em_bsf);
++	return em_bsf(ctxt);
+ }
+ 
+ static int em_bsr_c(struct x86_emulate_ctxt *ctxt)
+@@ -1064,18 +1006,12 @@ static int em_bsr_c(struct x86_emulate_ctxt *ctxt)
+ 	/* If src is zero, do not writeback, but update flags */
+ 	if (ctxt->src.val == 0)
+ 		ctxt->dst.type = OP_NONE;
+-	return fastop(ctxt, em_bsr);
++	return em_bsr(ctxt);
+ }
+ 
+ static __always_inline u8 test_cc(unsigned int condition, unsigned long flags)
+ {
+-	u8 rc;
+-	void (*fop)(void) = (void *)em_setcc + FASTOP_SIZE * (condition & 0xf);
+-
+-	flags = (flags & EFLAGS_MASK) | X86_EFLAGS_IF;
+-	asm("push %[flags]; popf; " CALL_NOSPEC
+-	    : "=a"(rc), ASM_CALL_CONSTRAINT : [thunk_target]"r"(fop), [flags]"r"(flags));
+-	return rc;
++	return __emulate_cc(flags, condition & 0xf);
+ }
+ 
+ static void fetch_register_operand(struct operand *op)
+@@ -2325,7 +2261,7 @@ static int em_cmpxchg(struct x86_emulate_ctxt *ctxt)
+ 	ctxt->dst.val = reg_read(ctxt, VCPU_REGS_RAX);
+ 	ctxt->src.orig_val = ctxt->src.val;
+ 	ctxt->src.val = ctxt->dst.orig_val;
+-	fastop(ctxt, em_cmp);
++	em_cmp(ctxt);
+ 
+ 	if (ctxt->eflags & X86_EFLAGS_ZF) {
+ 		/* Success: write back to memory; no update of EAX */
+@@ -3090,7 +3026,7 @@ static int em_das(struct x86_emulate_ctxt *ctxt)
+ 	ctxt->src.type = OP_IMM;
+ 	ctxt->src.val = 0;
+ 	ctxt->src.bytes = 1;
+-	fastop(ctxt, em_or);
++	em_or(ctxt);
+ 	ctxt->eflags &= ~(X86_EFLAGS_AF | X86_EFLAGS_CF);
+ 	if (cf)
+ 		ctxt->eflags |= X86_EFLAGS_CF;
+@@ -3116,7 +3052,7 @@ static int em_aam(struct x86_emulate_ctxt *ctxt)
+ 	ctxt->src.type = OP_IMM;
+ 	ctxt->src.val = 0;
+ 	ctxt->src.bytes = 1;
+-	fastop(ctxt, em_or);
++	em_or(ctxt);
+ 
+ 	return X86EMUL_CONTINUE;
+ }
+@@ -3134,7 +3070,7 @@ static int em_aad(struct x86_emulate_ctxt *ctxt)
+ 	ctxt->src.type = OP_IMM;
+ 	ctxt->src.val = 0;
+ 	ctxt->src.bytes = 1;
+-	fastop(ctxt, em_or);
++	em_or(ctxt);
+ 
+ 	return X86EMUL_CONTINUE;
+ }
+@@ -3225,7 +3161,7 @@ static int em_xchg(struct x86_emulate_ctxt *ctxt)
+ static int em_imul_3op(struct x86_emulate_ctxt *ctxt)
+ {
+ 	ctxt->dst.val = ctxt->src2.val;
+-	return fastop(ctxt, em_imul);
++	return em_imul(ctxt);
+ }
+ 
+ static int em_cwd(struct x86_emulate_ctxt *ctxt)
+@@ -4004,7 +3940,6 @@ static int check_perm_out(struct x86_emulate_ctxt *ctxt)
+ #define MD(_f, _m) { .flags = ((_f) | ModeDual), .u.mdual = (_m) }
+ #define E(_f, _e) { .flags = ((_f) | Escape | ModRM), .u.esc = (_e) }
+ #define I(_f, _e) { .flags = (_f), .u.execute = (_e) }
+-#define F(_f, _e) { .flags = (_f) | Fastop, .u.fastop = (_e) }
+ #define II(_f, _e, _i) \
+ 	{ .flags = (_f)|Intercept, .u.execute = (_e), .intercept = x86_intercept_##_i }
+ #define IIP(_f, _e, _i, _p) \
+@@ -4019,9 +3954,9 @@ static int check_perm_out(struct x86_emulate_ctxt *ctxt)
+ #define I2bvIP(_f, _e, _i, _p) \
+ 	IIP((_f) | ByteOp, _e, _i, _p), IIP(_f, _e, _i, _p)
+ 
+-#define F6ALU(_f, _e) F2bv((_f) | DstMem | SrcReg | ModRM, _e),		\
+-		F2bv(((_f) | DstReg | SrcMem | ModRM) & ~Lock, _e),	\
+-		F2bv(((_f) & ~Lock) | DstAcc | SrcImm, _e)
++#define I6ALU(_f, _e) I2bv((_f) | DstMem | SrcReg | ModRM, _e),		\
++		I2bv(((_f) | DstReg | SrcMem | ModRM) & ~Lock, _e),	\
++		I2bv(((_f) & ~Lock) | DstAcc | SrcImm, _e)
+ 
+ static const struct opcode group7_rm0[] = {
+ 	N,
+@@ -4059,14 +3994,14 @@ static const struct opcode group7_rm7[] = {
+ };
+ 
+ static const struct opcode group1[] = {
+-	F(Lock, em_add),
+-	F(Lock | PageTable, em_or),
+-	F(Lock, em_adc),
+-	F(Lock, em_sbb),
+-	F(Lock | PageTable, em_and),
+-	F(Lock, em_sub),
+-	F(Lock, em_xor),
+-	F(NoWrite, em_cmp),
++	I(Lock, em_add),
++	I(Lock | PageTable, em_or),
++	I(Lock, em_adc),
++	I(Lock, em_sbb),
++	I(Lock | PageTable, em_and),
++	I(Lock, em_sub),
++	I(Lock, em_xor),
++	I(NoWrite, em_cmp),
+ };
+ 
+ static const struct opcode group1A[] = {
+@@ -4074,36 +4009,36 @@ static const struct opcode group1A[] = {
+ };
+ 
+ static const struct opcode group2[] = {
+-	F(DstMem | ModRM, em_rol),
+-	F(DstMem | ModRM, em_ror),
+-	F(DstMem | ModRM, em_rcl),
+-	F(DstMem | ModRM, em_rcr),
+-	F(DstMem | ModRM, em_shl),
+-	F(DstMem | ModRM, em_shr),
+-	F(DstMem | ModRM, em_shl),
+-	F(DstMem | ModRM, em_sar),
++	I(DstMem | ModRM, em_rol),
++	I(DstMem | ModRM, em_ror),
++	I(DstMem | ModRM, em_rcl),
++	I(DstMem | ModRM, em_rcr),
++	I(DstMem | ModRM, em_shl),
++	I(DstMem | ModRM, em_shr),
++	I(DstMem | ModRM, em_shl),
++	I(DstMem | ModRM, em_sar),
+ };
+ 
+ static const struct opcode group3[] = {
+-	F(DstMem | SrcImm | NoWrite, em_test),
+-	F(DstMem | SrcImm | NoWrite, em_test),
+-	F(DstMem | SrcNone | Lock, em_not),
+-	F(DstMem | SrcNone | Lock, em_neg),
+-	F(DstXacc | Src2Mem, em_mul_ex),
+-	F(DstXacc | Src2Mem, em_imul_ex),
+-	F(DstXacc | Src2Mem, em_div_ex),
+-	F(DstXacc | Src2Mem, em_idiv_ex),
++	I(DstMem | SrcImm | NoWrite, em_test),
++	I(DstMem | SrcImm | NoWrite, em_test),
++	I(DstMem | SrcNone | Lock, em_not),
++	I(DstMem | SrcNone | Lock, em_neg),
++	I(DstXacc | Src2Mem, em_mul_ex),
++	I(DstXacc | Src2Mem, em_imul_ex),
++	I(DstXacc | Src2Mem, em_div_ex),
++	I(DstXacc | Src2Mem, em_idiv_ex),
+ };
+ 
+ static const struct opcode group4[] = {
+-	F(ByteOp | DstMem | SrcNone | Lock, em_inc),
+-	F(ByteOp | DstMem | SrcNone | Lock, em_dec),
++	I(ByteOp | DstMem | SrcNone | Lock, em_inc),
++	I(ByteOp | DstMem | SrcNone | Lock, em_dec),
+ 	N, N, N, N, N, N,
+ };
+ 
+ static const struct opcode group5[] = {
+-	F(DstMem | SrcNone | Lock,		em_inc),
+-	F(DstMem | SrcNone | Lock,		em_dec),
++	I(DstMem | SrcNone | Lock,		em_inc),
++	I(DstMem | SrcNone | Lock,		em_dec),
+ 	I(SrcMem | NearBranch | IsBranch | ShadowStack, em_call_near_abs),
+ 	I(SrcMemFAddr | ImplicitOps | IsBranch | ShadowStack, em_call_far),
+ 	I(SrcMem | NearBranch | IsBranch,       em_jmp_abs),
+@@ -4139,10 +4074,10 @@ static const struct group_dual group7 = { {
+ 
+ static const struct opcode group8[] = {
+ 	N, N, N, N,
+-	F(DstMem | SrcImmByte | NoWrite,		em_bt),
+-	F(DstMem | SrcImmByte | Lock | PageTable,	em_bts),
+-	F(DstMem | SrcImmByte | Lock,			em_btr),
+-	F(DstMem | SrcImmByte | Lock | PageTable,	em_btc),
++	I(DstMem | SrcImmByte | NoWrite,		em_bt),
++	I(DstMem | SrcImmByte | Lock | PageTable,	em_bts),
++	I(DstMem | SrcImmByte | Lock,			em_btr),
++	I(DstMem | SrcImmByte | Lock | PageTable,	em_btc),
+ };
+ 
+ /*
+@@ -4279,31 +4214,31 @@ static const struct instr_dual instr_dual_8d = {
+ 
+ static const struct opcode opcode_table[256] = {
+ 	/* 0x00 - 0x07 */
+-	F6ALU(Lock, em_add),
++	I6ALU(Lock, em_add),
+ 	I(ImplicitOps | Stack | No64 | Src2ES, em_push_sreg),
+ 	I(ImplicitOps | Stack | No64 | Src2ES, em_pop_sreg),
+ 	/* 0x08 - 0x0F */
+-	F6ALU(Lock | PageTable, em_or),
++	I6ALU(Lock | PageTable, em_or),
+ 	I(ImplicitOps | Stack | No64 | Src2CS, em_push_sreg),
+ 	N,
+ 	/* 0x10 - 0x17 */
+-	F6ALU(Lock, em_adc),
++	I6ALU(Lock, em_adc),
+ 	I(ImplicitOps | Stack | No64 | Src2SS, em_push_sreg),
+ 	I(ImplicitOps | Stack | No64 | Src2SS, em_pop_sreg),
+ 	/* 0x18 - 0x1F */
+-	F6ALU(Lock, em_sbb),
++	I6ALU(Lock, em_sbb),
+ 	I(ImplicitOps | Stack | No64 | Src2DS, em_push_sreg),
+ 	I(ImplicitOps | Stack | No64 | Src2DS, em_pop_sreg),
+ 	/* 0x20 - 0x27 */
+-	F6ALU(Lock | PageTable, em_and), N, N,
++	I6ALU(Lock | PageTable, em_and), N, N,
+ 	/* 0x28 - 0x2F */
+-	F6ALU(Lock, em_sub), N, I(ByteOp | DstAcc | No64, em_das),
++	I6ALU(Lock, em_sub), N, I(ByteOp | DstAcc | No64, em_das),
+ 	/* 0x30 - 0x37 */
+-	F6ALU(Lock, em_xor), N, N,
++	I6ALU(Lock, em_xor), N, N,
+ 	/* 0x38 - 0x3F */
+-	F6ALU(NoWrite, em_cmp), N, N,
++	I6ALU(NoWrite, em_cmp), N, N,
+ 	/* 0x40 - 0x4F */
+-	X8(F(DstReg, em_inc)), X8(F(DstReg, em_dec)),
++	X8(I(DstReg, em_inc)), X8(I(DstReg, em_dec)),
+ 	/* 0x50 - 0x57 */
+ 	X8(I(SrcReg | Stack, em_push)),
+ 	/* 0x58 - 0x5F */
+@@ -4327,7 +4262,7 @@ static const struct opcode opcode_table[256] = {
+ 	G(DstMem | SrcImm, group1),
+ 	G(ByteOp | DstMem | SrcImm | No64, group1),
+ 	G(DstMem | SrcImmByte, group1),
+-	F2bv(DstMem | SrcReg | ModRM | NoWrite, em_test),
++	I2bv(DstMem | SrcReg | ModRM | NoWrite, em_test),
+ 	I2bv(DstMem | SrcReg | ModRM | Lock | PageTable, em_xchg),
+ 	/* 0x88 - 0x8F */
+ 	I2bv(DstMem | SrcReg | ModRM | Mov | PageTable, em_mov),
+@@ -4348,12 +4283,12 @@ static const struct opcode opcode_table[256] = {
+ 	I2bv(DstAcc | SrcMem | Mov | MemAbs, em_mov),
+ 	I2bv(DstMem | SrcAcc | Mov | MemAbs | PageTable, em_mov),
+ 	I2bv(SrcSI | DstDI | Mov | String | TwoMemOp, em_mov),
+-	F2bv(SrcSI | DstDI | String | NoWrite | TwoMemOp, em_cmp_r),
++	I2bv(SrcSI | DstDI | String | NoWrite | TwoMemOp, em_cmp_r),
+ 	/* 0xA8 - 0xAF */
+-	F2bv(DstAcc | SrcImm | NoWrite, em_test),
++	I2bv(DstAcc | SrcImm | NoWrite, em_test),
+ 	I2bv(SrcAcc | DstDI | Mov | String, em_mov),
+ 	I2bv(SrcSI | DstAcc | Mov | String, em_mov),
+-	F2bv(SrcAcc | DstDI | String | NoWrite, em_cmp_r),
++	I2bv(SrcAcc | DstDI | String | NoWrite, em_cmp_r),
+ 	/* 0xB0 - 0xB7 */
+ 	X8(I(ByteOp | DstReg | SrcImm | Mov, em_mov)),
+ 	/* 0xB8 - 0xBF */
+@@ -4378,7 +4313,7 @@ static const struct opcode opcode_table[256] = {
+ 	G(Src2CL | ByteOp, group2), G(Src2CL, group2),
+ 	I(DstAcc | SrcImmUByte | No64, em_aam),
+ 	I(DstAcc | SrcImmUByte | No64, em_aad),
+-	F(DstAcc | ByteOp | No64, em_salc),
++	I(DstAcc | ByteOp | No64, em_salc),
+ 	I(DstAcc | SrcXLat | ByteOp, em_mov),
+ 	/* 0xD8 - 0xDF */
+ 	N, E(0, &escape_d9), N, E(0, &escape_db), N, E(0, &escape_dd), N, N,
+@@ -4463,32 +4398,32 @@ static const struct opcode twobyte_table[256] = {
+ 	/* 0xA0 - 0xA7 */
+ 	I(Stack | Src2FS, em_push_sreg), I(Stack | Src2FS, em_pop_sreg),
+ 	II(ImplicitOps, em_cpuid, cpuid),
+-	F(DstMem | SrcReg | ModRM | BitOp | NoWrite, em_bt),
+-	F(DstMem | SrcReg | Src2ImmByte | ModRM, em_shld),
+-	F(DstMem | SrcReg | Src2CL | ModRM, em_shld), N, N,
++	I(DstMem | SrcReg | ModRM | BitOp | NoWrite, em_bt),
++	I(DstMem | SrcReg | Src2ImmByte | ModRM, em_shld),
++	I(DstMem | SrcReg | Src2CL | ModRM, em_shld), N, N,
+ 	/* 0xA8 - 0xAF */
+ 	I(Stack | Src2GS, em_push_sreg), I(Stack | Src2GS, em_pop_sreg),
+ 	II(EmulateOnUD | ImplicitOps, em_rsm, rsm),
+-	F(DstMem | SrcReg | ModRM | BitOp | Lock | PageTable, em_bts),
+-	F(DstMem | SrcReg | Src2ImmByte | ModRM, em_shrd),
+-	F(DstMem | SrcReg | Src2CL | ModRM, em_shrd),
+-	GD(0, &group15), F(DstReg | SrcMem | ModRM, em_imul),
++	I(DstMem | SrcReg | ModRM | BitOp | Lock | PageTable, em_bts),
++	I(DstMem | SrcReg | Src2ImmByte | ModRM, em_shrd),
++	I(DstMem | SrcReg | Src2CL | ModRM, em_shrd),
++	GD(0, &group15), I(DstReg | SrcMem | ModRM, em_imul),
+ 	/* 0xB0 - 0xB7 */
+ 	I2bv(DstMem | SrcReg | ModRM | Lock | PageTable | SrcWrite, em_cmpxchg),
+ 	I(DstReg | SrcMemFAddr | ModRM | Src2SS, em_lseg),
+-	F(DstMem | SrcReg | ModRM | BitOp | Lock, em_btr),
++	I(DstMem | SrcReg | ModRM | BitOp | Lock, em_btr),
+ 	I(DstReg | SrcMemFAddr | ModRM | Src2FS, em_lseg),
+ 	I(DstReg | SrcMemFAddr | ModRM | Src2GS, em_lseg),
+ 	D(DstReg | SrcMem8 | ModRM | Mov), D(DstReg | SrcMem16 | ModRM | Mov),
+ 	/* 0xB8 - 0xBF */
+ 	N, N,
+ 	G(BitOp, group8),
+-	F(DstMem | SrcReg | ModRM | BitOp | Lock | PageTable, em_btc),
++	I(DstMem | SrcReg | ModRM | BitOp | Lock | PageTable, em_btc),
+ 	I(DstReg | SrcMem | ModRM, em_bsf_c),
+ 	I(DstReg | SrcMem | ModRM, em_bsr_c),
+ 	D(DstReg | SrcMem8 | ModRM | Mov), D(DstReg | SrcMem16 | ModRM | Mov),
+ 	/* 0xC0 - 0xC7 */
+-	F2bv(DstMem | SrcReg | ModRM | SrcWrite | Lock, em_xadd),
++	I2bv(DstMem | SrcReg | ModRM | SrcWrite | Lock, em_xadd),
+ 	N, ID(0, &instr_dual_0f_c3),
+ 	N, N, N, GD(0, &group9),
+ 	/* 0xC8 - 0xCF */
+@@ -5198,24 +5133,6 @@ static void fetch_possible_mmx_operand(struct operand *op)
+ 		kvm_read_mmx_reg(op->addr.mm, &op->mm_val);
+ }
+ 
+-static int fastop(struct x86_emulate_ctxt *ctxt, fastop_t fop)
+-{
+-	ulong flags = (ctxt->eflags & EFLAGS_MASK) | X86_EFLAGS_IF;
+-
+-	if (!(ctxt->d & ByteOp))
+-		fop += __ffs(ctxt->dst.bytes) * FASTOP_SIZE;
+-
+-	asm("push %[flags]; popf; " CALL_NOSPEC " ; pushf; pop %[flags]\n"
+-	    : "+a"(ctxt->dst.val), "+d"(ctxt->src.val), [flags]"+D"(flags),
+-	      [thunk_target]"+S"(fop), ASM_CALL_CONSTRAINT
+-	    : "c"(ctxt->src2.val));
+-
+-	ctxt->eflags = (ctxt->eflags & ~EFLAGS_MASK) | (flags & EFLAGS_MASK);
+-	if (!fop) /* exception is returned in fop variable */
+-		return emulate_de(ctxt);
+-	return X86EMUL_CONTINUE;
+-}
+-
+ void init_decode_cache(struct x86_emulate_ctxt *ctxt)
+ {
+ 	/* Clear fields that are set conditionally but read without a guard. */
+@@ -5379,10 +5296,7 @@ int x86_emulate_insn(struct x86_emulate_ctxt *ctxt, bool check_intercepts)
+ 		ctxt->eflags &= ~X86_EFLAGS_RF;
+ 
+ 	if (ctxt->execute) {
+-		if (ctxt->d & Fastop)
+-			rc = fastop(ctxt, ctxt->fop);
+-		else
+-			rc = ctxt->execute(ctxt);
++		rc = ctxt->execute(ctxt);
+ 		if (rc != X86EMUL_CONTINUE)
+ 			goto done;
+ 		goto writeback;
+diff --git a/arch/x86/kvm/vmx/vmenter.S b/arch/x86/kvm/vmx/vmenter.S
+index 0a6cf5bff2aa4715df46d5297bb2c94b3b7ffa4d..bc255d709d8a16ae22b5bc401965d209a89a8692 100644
+--- a/arch/x86/kvm/vmx/vmenter.S
++++ b/arch/x86/kvm/vmx/vmenter.S
+@@ -361,6 +361,10 @@ SYM_FUNC_END(vmread_error_trampoline)
+ 
+ .section .text, "ax"
+ 
++#ifndef CONFIG_X86_FRED
++
+ SYM_FUNC_START(vmx_do_interrupt_irqoff)
+ 	VMX_DO_EVENT_IRQOFF CALL_NOSPEC _ASM_ARG1
+ SYM_FUNC_END(vmx_do_interrupt_irqoff)
++
++#endif
+diff --git a/arch/x86/kvm/vmx/vmx.c b/arch/x86/kvm/vmx/vmx.c
+index d7b258af63ea9c19add3208091f53699b9d3c368..f87c216d976d7d344c924aa4cc18fe1bf8f9b731 100644
+--- a/arch/x86/kvm/vmx/vmx.c
++++ b/arch/x86/kvm/vmx/vmx.c
+@@ -7021,8 +7021,14 @@ static void handle_external_interrupt_irqoff(struct kvm_vcpu *vcpu,
+ 	    "unexpected VM-Exit interrupt info: 0x%x", intr_info))
+ 		return;
+ 
++	/*
++	 * Invoke the kernel's IRQ handler for the vector.  Use the FRED path
++	 * when it's available even if FRED isn't fully enabled, e.g. even if
++	 * FRED isn't supported in hardware, in order to avoid the indirect
++	 * CALL in the non-FRED path.
++	 */
+ 	kvm_before_interrupt(vcpu, KVM_HANDLING_IRQ);
+-	if (cpu_feature_enabled(X86_FEATURE_FRED))
++	if (IS_ENABLED(CONFIG_X86_FRED))
+ 		fred_entry_from_kvm(EVENT_TYPE_EXTINT, vector);
+ 	else
+ 		vmx_do_interrupt_irqoff(gate_offset((gate_desc *)host_idt_base + vector));
+diff --git a/arch/x86/lib/bhi.S b/arch/x86/lib/bhi.S
+index 58891681261b0b91098d2ced2e9baef56396a97e..aad1e5839202667e0b7fc1d2bf8a4dee0c4ac3b6 100644
+--- a/arch/x86/lib/bhi.S
++++ b/arch/x86/lib/bhi.S
+@@ -5,7 +5,7 @@
+ #include <asm/nospec-branch.h>
+ 
+ /*
+- * Notably, the FineIBT preamble calling these will have ZF set and r10 zero.
++ * Notably, the FineIBT preamble calling these will have ZF set and eax zero.
+  *
+  * The very last element is in fact larger than 32 bytes, but since its the
+  * last element, this does not matter,
+@@ -36,7 +36,7 @@ SYM_INNER_LABEL(__bhi_args_1, SYM_L_LOCAL)
+ 	ANNOTATE_NOENDBR
+ 	UNWIND_HINT_FUNC
+ 	jne .Lud_1
+-	cmovne %r10, %rdi
++	cmovne %rax, %rdi
+ 	ANNOTATE_UNRET_SAFE
+ 	ret
+ 	int3
+@@ -53,8 +53,8 @@ SYM_INNER_LABEL(__bhi_args_2, SYM_L_LOCAL)
+ 	ANNOTATE_NOENDBR
+ 	UNWIND_HINT_FUNC
+ 	jne .Lud_1
+-	cmovne %r10, %rdi
+-	cmovne %r10, %rsi
++	cmovne %rax, %rdi
++	cmovne %rax, %rsi
+ 	ANNOTATE_UNRET_SAFE
+ 	ret
+ 	int3
+@@ -64,9 +64,9 @@ SYM_INNER_LABEL(__bhi_args_3, SYM_L_LOCAL)
+ 	ANNOTATE_NOENDBR
+ 	UNWIND_HINT_FUNC
+ 	jne .Lud_1
+-	cmovne %r10, %rdi
+-	cmovne %r10, %rsi
+-	cmovne %r10, %rdx
++	cmovne %rax, %rdi
++	cmovne %rax, %rsi
++	cmovne %rax, %rdx
+ 	ANNOTATE_UNRET_SAFE
+ 	ret
+ 	int3
+@@ -76,10 +76,10 @@ SYM_INNER_LABEL(__bhi_args_4, SYM_L_LOCAL)
+ 	ANNOTATE_NOENDBR
+ 	UNWIND_HINT_FUNC
+ 	jne .Lud_2
+-	cmovne %r10, %rdi
+-	cmovne %r10, %rsi
+-	cmovne %r10, %rdx
+-	cmovne %r10, %rcx
++	cmovne %rax, %rdi
++	cmovne %rax, %rsi
++	cmovne %rax, %rdx
++	cmovne %rax, %rcx
+ 	ANNOTATE_UNRET_SAFE
+ 	ret
+ 	int3
+@@ -89,11 +89,11 @@ SYM_INNER_LABEL(__bhi_args_5, SYM_L_LOCAL)
+ 	ANNOTATE_NOENDBR
+ 	UNWIND_HINT_FUNC
+ 	jne .Lud_2
+-	cmovne %r10, %rdi
+-	cmovne %r10, %rsi
+-	cmovne %r10, %rdx
+-	cmovne %r10, %rcx
+-	cmovne %r10, %r8
++	cmovne %rax, %rdi
++	cmovne %rax, %rsi
++	cmovne %rax, %rdx
++	cmovne %rax, %rcx
++	cmovne %rax, %r8
+ 	ANNOTATE_UNRET_SAFE
+ 	ret
+ 	int3
+@@ -110,12 +110,12 @@ SYM_INNER_LABEL(__bhi_args_6, SYM_L_LOCAL)
+ 	ANNOTATE_NOENDBR
+ 	UNWIND_HINT_FUNC
+ 	jne .Lud_2
+-	cmovne %r10, %rdi
+-	cmovne %r10, %rsi
+-	cmovne %r10, %rdx
+-	cmovne %r10, %rcx
+-	cmovne %r10, %r8
+-	cmovne %r10, %r9
++	cmovne %rax, %rdi
++	cmovne %rax, %rsi
++	cmovne %rax, %rdx
++	cmovne %rax, %rcx
++	cmovne %rax, %r8
++	cmovne %rax, %r9
+ 	ANNOTATE_UNRET_SAFE
+ 	ret
+ 	int3
+@@ -125,13 +125,13 @@ SYM_INNER_LABEL(__bhi_args_7, SYM_L_LOCAL)
+ 	ANNOTATE_NOENDBR
+ 	UNWIND_HINT_FUNC
+ 	jne .Lud_2
+-	cmovne %r10, %rdi
+-	cmovne %r10, %rsi
+-	cmovne %r10, %rdx
+-	cmovne %r10, %rcx
+-	cmovne %r10, %r8
+-	cmovne %r10, %r9
+-	cmovne %r10, %rsp
++	cmovne %rax, %rdi
++	cmovne %rax, %rsi
++	cmovne %rax, %rdx
++	cmovne %rax, %rcx
++	cmovne %rax, %r8
++	cmovne %rax, %r9
++	cmovne %rax, %rsp
+ 	ANNOTATE_UNRET_SAFE
+ 	ret
+ 	int3
+diff --git a/arch/x86/lib/retpoline.S b/arch/x86/lib/retpoline.S
+index f513d33b6d370461ffb232e56515bb37f6361c1a..8f1fed0c3b83f4f437d8cb359b90c4e2ebcff689 100644
+--- a/arch/x86/lib/retpoline.S
++++ b/arch/x86/lib/retpoline.S
+@@ -134,10 +134,10 @@ SYM_CODE_END(__x86_indirect_jump_thunk_array)
+ .macro ITS_THUNK reg
+ 
+ /*
+- * If CFI paranoid is used then the ITS thunk starts with opcodes (0xea; jne 1b)
++ * If CFI paranoid is used then the ITS thunk starts with opcodes (1: udb; jne 1b)
+  * that complete the fineibt_paranoid caller sequence.
+  */
+-1:	.byte 0xea
++1:	ASM_UDB
+ SYM_INNER_LABEL(__x86_indirect_paranoid_thunk_\reg, SYM_L_GLOBAL)
+ 	UNWIND_HINT_UNDEFINED
+ 	ANNOTATE_NOENDBR
+diff --git a/arch/x86/net/bpf_jit_comp.c b/arch/x86/net/bpf_jit_comp.c
+index fc13306af15fa849ca60df2d022da2bfeb8ed8fe..d4c93d9e73e40dc3e877afad344a8d8683b57a2d 100644
+--- a/arch/x86/net/bpf_jit_comp.c
++++ b/arch/x86/net/bpf_jit_comp.c
+@@ -420,12 +420,12 @@ static void emit_fineibt(u8 **pprog, u8 *ip, u32 hash, int arity)
+ 	u8 *prog = *pprog;
+ 
+ 	EMIT_ENDBR();
+-	EMIT3_off32(0x41, 0x81, 0xea, hash);		/* subl $hash, %r10d	*/
++	EMIT1_off32(0x2d, hash);			/* subl $hash, %eax	*/
+ 	if (cfi_bhi) {
++		EMIT2(0x2e, 0x2e);			/* cs cs */
+ 		emit_call(&prog, __bhi_args[arity], ip + 11);
+ 	} else {
+-		EMIT2(0x75, 0xf9);			/* jne.d8 .-7		*/
+-		EMIT3(0x0f, 0x1f, 0x00);		/* nop3			*/
++		EMIT3_off32(0x2e, 0x0f, 0x85, 3);	/* jne.d32,pn 3		*/
+ 	}
+ 	EMIT_ENDBR_POISON();
+ 
+diff --git a/arch/x86/platform/efi/efi_stub_64.S b/arch/x86/platform/efi/efi_stub_64.S
+index 2206b8bc47b8a75749ecbccdd8407fc2d2d58592..f0a5fba0717efc3638ffe0f9c8590b390ae4c68f 100644
+--- a/arch/x86/platform/efi/efi_stub_64.S
++++ b/arch/x86/platform/efi/efi_stub_64.S
+@@ -11,6 +11,10 @@
+ #include <asm/nospec-branch.h>
+ 
+ SYM_FUNC_START(__efi_call)
++	/*
++	 * The EFI code doesn't have any CFI, annotate away the CFI violation.
++	 */
++	ANNOTATE_NOCFI_SYM
+ 	pushq %rbp
+ 	movq %rsp, %rbp
+ 	and $~0xf, %rsp
+diff --git a/drivers/misc/lkdtm/perms.c b/drivers/misc/lkdtm/perms.c
+index 6c24426104ba6f5e125a4e2d7258781b0b83c2c9..e1f5e9abb30193d24898208865dc259ce1336b5f 100644
+--- a/drivers/misc/lkdtm/perms.c
++++ b/drivers/misc/lkdtm/perms.c
+@@ -9,6 +9,7 @@
+ #include <linux/vmalloc.h>
+ #include <linux/mman.h>
+ #include <linux/uaccess.h>
++#include <linux/objtool.h>
+ #include <asm/cacheflush.h>
+ #include <asm/sections.h>
+ 
+@@ -86,6 +87,10 @@ static noinline __nocfi void execute_location(void *dst, bool write)
+ 	func();
+ 	pr_err("FAIL: func returned\n");
+ }
++/*
++ * Explicitly doing the wrong thing for testing.
++ */
++ANNOTATE_NOCFI_SYM(execute_location);
+ 
+ static void execute_user_location(void *dst)
+ {
+diff --git a/include/linux/compiler-clang.h b/include/linux/compiler-clang.h
+index 8720a0705900ca5e571be2475bb85132e8ef01d0..107ce05bd16eb4a2ecb0f8cbf5c9efeab1845a1c 100644
+--- a/include/linux/compiler-clang.h
++++ b/include/linux/compiler-clang.h
+@@ -115,11 +115,6 @@
+ # define __noscs	__attribute__((__no_sanitize__("shadow-call-stack")))
+ #endif
+ 
+-#if __has_feature(kcfi)
+-/* Disable CFI checking inside a function. */
+-#define __nocfi		__attribute__((__no_sanitize__("kcfi")))
+-#endif
+-
+ /*
+  * Turn individual warnings and errors on and off locally, depending
+  * on version.
+diff --git a/include/linux/compiler-gcc.h b/include/linux/compiler-gcc.h
+index 5d07c469b571ea334c3481b77cb2510a1fd99cc9..5de824a0b3d72cb53798c99f7b94873491214a3d 100644
+--- a/include/linux/compiler-gcc.h
++++ b/include/linux/compiler-gcc.h
+@@ -35,10 +35,6 @@
+ 	(typeof(ptr)) (__ptr + (off));					\
+ })
+ 
+-#ifdef CONFIG_MITIGATION_RETPOLINE
+-#define __noretpoline __attribute__((__indirect_branch__("keep")))
+-#endif
+-
+ #if defined(LATENT_ENTROPY_PLUGIN) && !defined(__CHECKER__)
+ #define __latent_entropy __attribute__((latent_entropy))
+ #endif
+diff --git a/include/linux/compiler_types.h b/include/linux/compiler_types.h
+index 2f3e80bf9f3574621ce8616c4c1d2d925b718d77..59288a2c1ad27700af5edafd89a0db82e85ce296 100644
+--- a/include/linux/compiler_types.h
++++ b/include/linux/compiler_types.h
+@@ -455,7 +455,9 @@ struct ftrace_likely_data {
+ # define __noscs
+ #endif
+ 
+-#ifndef __nocfi
++#if defined(CONFIG_CFI)
++# define __nocfi		__attribute__((__no_sanitize__("kcfi")))
++#else
+ # define __nocfi
+ #endif
+ 
+diff --git a/include/linux/init.h b/include/linux/init.h
+index a60d32d227ee4180f6b98730e1b1ac45607a0222..17c1bc712e234a63d16b2eaca373077bb3b3fcc5 100644
+--- a/include/linux/init.h
++++ b/include/linux/init.h
+@@ -7,13 +7,6 @@
+ #include <linux/stringify.h>
+ #include <linux/types.h>
+ 
+-/* Built-in __init functions needn't be compiled with retpoline */
+-#if defined(__noretpoline) && !defined(MODULE)
+-#define __noinitretpoline __noretpoline
+-#else
+-#define __noinitretpoline
+-#endif
+-
+ /* These macros are used to mark some functions or 
+  * initialized data (doesn't apply to uninitialized data)
+  * as `initialization' functions. The kernel can take this
+@@ -50,7 +43,6 @@
+ /* These are for everybody (although not all archs will actually
+    discard it in modules) */
+ #define __init		__section(".init.text") __cold __latent_entropy	\
+-						__noinitretpoline	\
+ 						__no_kstack_erase
+ #define __initdata	__section(".init.data")
+ #define __initconst	__section(".init.rodata")
+diff --git a/include/linux/objtool.h b/include/linux/objtool.h
+index 366ad004d794b739fbc1a269cb498d29485a03d5..46ebaa46e6c5832efed6d420a664c35b27e6d404 100644
+--- a/include/linux/objtool.h
++++ b/include/linux/objtool.h
+@@ -184,6 +184,15 @@
+  * WARN using UD2.
+  */
+ #define ANNOTATE_REACHABLE(label)	__ASM_ANNOTATE(label, ANNOTYPE_REACHABLE)
++/*
++ * This should not be used; it annotates away CFI violations. There are a few
++ * valid use cases like kexec handover to the next kernel image, and there is
++ * no security concern there.
++ *
++ * There are also a few real issues annotated away, like EFI because we can't
++ * control the EFI code.
++ */
++#define ANNOTATE_NOCFI_SYM(sym)		asm(__ASM_ANNOTATE(sym, ANNOTYPE_NOCFI))
+ 
+ #else
+ #define ANNOTATE_NOENDBR		ANNOTATE type=ANNOTYPE_NOENDBR
+@@ -194,6 +203,7 @@
+ #define ANNOTATE_INTRA_FUNCTION_CALL	ANNOTATE type=ANNOTYPE_INTRA_FUNCTION_CALL
+ #define ANNOTATE_UNRET_BEGIN		ANNOTATE type=ANNOTYPE_UNRET_BEGIN
+ #define ANNOTATE_REACHABLE		ANNOTATE type=ANNOTYPE_REACHABLE
++#define ANNOTATE_NOCFI_SYM		ANNOTATE type=ANNOTYPE_NOCFI
+ #endif
+ 
+ #if defined(CONFIG_NOINSTR_VALIDATION) && \
+diff --git a/include/linux/objtool_types.h b/include/linux/objtool_types.h
+index df5d9fa84dba339b7c14a57667f8e534db3e236e..aceac94632c8a85898ae135c95d04f7f6fcc1835 100644
+--- a/include/linux/objtool_types.h
++++ b/include/linux/objtool_types.h
+@@ -65,5 +65,6 @@ struct unwind_hint {
+ #define ANNOTYPE_IGNORE_ALTS		6
+ #define ANNOTYPE_INTRA_FUNCTION_CALL	7
+ #define ANNOTYPE_REACHABLE		8
++#define ANNOTYPE_NOCFI			9
+ 
+ #endif /* _LINUX_OBJTOOL_TYPES_H */
+diff --git a/tools/include/linux/objtool_types.h b/tools/include/linux/objtool_types.h
+index df5d9fa84dba339b7c14a57667f8e534db3e236e..aceac94632c8a85898ae135c95d04f7f6fcc1835 100644
+--- a/tools/include/linux/objtool_types.h
++++ b/tools/include/linux/objtool_types.h
+@@ -65,5 +65,6 @@ struct unwind_hint {
+ #define ANNOTYPE_IGNORE_ALTS		6
+ #define ANNOTYPE_INTRA_FUNCTION_CALL	7
+ #define ANNOTYPE_REACHABLE		8
++#define ANNOTYPE_NOCFI			9
+ 
+ #endif /* _LINUX_OBJTOOL_TYPES_H */
+diff --git a/tools/objtool/check.c b/tools/objtool/check.c
+index a72059fcbc8355a764b99d5b35a3ef377cbb124e..a5770570b106f3ba96d2f1c715c67e07d3e74e4f 100644
+--- a/tools/objtool/check.c
++++ b/tools/objtool/check.c
+@@ -2392,6 +2392,8 @@ static int __annotate_ifc(struct objtool_file *file, int type, struct instructio
+ 
+ static int __annotate_late(struct objtool_file *file, int type, struct instruction *insn)
+ {
++	struct symbol *sym;
++
+ 	switch (type) {
+ 	case ANNOTYPE_NOENDBR:
+ 		/* early */
+@@ -2433,6 +2435,15 @@ static int __annotate_late(struct objtool_file *file, int type, struct instructi
+ 		insn->dead_end = false;
+ 		break;
+ 
++	case ANNOTYPE_NOCFI:
++		sym = insn->sym;
++		if (!sym) {
++			ERROR_INSN(insn, "dodgy NOCFI annotation");
++			return -1;
++		}
++		insn->sym->nocfi = 1;
++		break;
++
+ 	default:
+ 		ERROR_INSN(insn, "Unknown annotation type: %d", type);
+ 		return -1;
+@@ -3994,6 +4005,37 @@ static int validate_retpoline(struct objtool_file *file)
+ 		warnings++;
+ 	}
+ 
++	if (!opts.cfi)
++		return warnings;
++
++	/*
++	 * kCFI call sites look like:
++	 *
++	 *     movl $(-0x12345678), %r10d
++	 *     addl -4(%r11), %r10d
++	 *     jz 1f
++	 *     ud2
++	 *  1: cs call __x86_indirect_thunk_r11
++	 *
++	 * Verify all indirect calls are kCFI adorned by checking for the
++	 * UD2. Notably, doing __nocfi calls to regular (cfi) functions is
++	 * broken.
++	 */
++	list_for_each_entry(insn, &file->retpoline_call_list, call_node) {
++		struct symbol *sym = insn->sym;
++
++		if (sym && (sym->type == STT_NOTYPE ||
++			    sym->type == STT_FUNC) && !sym->nocfi) {
++			struct instruction *prev =
++				prev_insn_same_sym(file, insn);
++
++			if (!prev || prev->type != INSN_BUG) {
++				WARN_INSN(insn, "no-cfi indirect call!");
++				warnings++;
++			}
++		}
++	}
++
+ 	return warnings;
+ }
+ 
+diff --git a/tools/objtool/include/objtool/elf.h b/tools/objtool/include/objtool/elf.h
+index 0a2fa3ac00793055a6a558640fa53916465c7e01..df8434d3b74400bd913d47f71ba5e2d29578130b 100644
+--- a/tools/objtool/include/objtool/elf.h
++++ b/tools/objtool/include/objtool/elf.h
+@@ -70,6 +70,7 @@ struct symbol {
+ 	u8 local_label       : 1;
+ 	u8 frame_pointer     : 1;
+ 	u8 ignore	     : 1;
++	u8 nocfi             : 1;
+ 	struct list_head pv_target;
+ 	struct reloc *relocs;
+ 	struct section *group_sec;

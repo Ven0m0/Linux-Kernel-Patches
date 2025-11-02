@@ -1,0 +1,95 @@
+From 20141514b2a8015784473b7d7516570fae3a24fe Mon Sep 17 00:00:00 2001
+From: Ben Skeggs <bskeggs@nvidia.com>
+Date: Fri, 25 Jul 2025 06:53:12 +1000
+Subject: [PATCH] drm/nouveau/mmu/tu102: Add support for compressed kinds
+
+Allow compressed PTE kinds to be written into PTEs when GSP-RM is
+present, rather than reverting to their non-compressed versions.
+
+Signed-off-by: Ben Skeggs <bskeggs@nvidia.com>
+Signed-off-by: Mohamed Ahmed <mohamedahmedegypt2001@gmail.com>
+---
+ .../drm/nouveau/nvkm/subdev/mmu/vmmgp100.c    | 46 ++++++++++++++++++-
+ 1 file changed, 44 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/nouveau/nvkm/subdev/mmu/vmmgp100.c b/drivers/gpu/drm/nouveau/nvkm/subdev/mmu/vmmgp100.c
+index ecff1096a1bb3..ed15a44751814 100644
+--- a/drivers/gpu/drm/nouveau/nvkm/subdev/mmu/vmmgp100.c
++++ b/drivers/gpu/drm/nouveau/nvkm/subdev/mmu/vmmgp100.c
+@@ -109,12 +109,34 @@ gp100_vmm_pgt_pfn(struct nvkm_vmm *vmm, struct nvkm_mmu_pt *pt,
+ 	nvkm_done(pt->memory);
+ }
+ 
++static inline u64
++gp100_vmm_comptag_nr(u64 size)
++{
++	return size >> 16; /* One comptag per 64KiB VRAM. */
++}
++
++static inline u64
++gp100_vmm_pte_comptagline_base(u64 addr)
++{
++	/* RM allocates enough comptags for all of VRAM, so use a 1:1 mapping. */
++	return (1 + gp100_vmm_comptag_nr(addr)) << 36; /* NV_MMU_VER2_PTE_COMPTAGLINE */
++}
++
++static inline u64
++gp100_vmm_pte_comptagline_incr(u32 page_size)
++{
++	return gp100_vmm_comptag_nr(page_size) << 36; /* NV_MMU_VER2_PTE_COMPTAGLINE */
++}
++
+ static inline void
+ gp100_vmm_pgt_pte(struct nvkm_vmm *vmm, struct nvkm_mmu_pt *pt,
+ 		  u32 ptei, u32 ptes, struct nvkm_vmm_map *map, u64 addr)
+ {
+ 	u64 data = (addr >> 4) | map->type;
+ 
++	if (map->ctag)
++		data |= gp100_vmm_pte_comptagline_base(addr);
++
+ 	while (ptes--) {
+ 		VMM_WO064(pt, vmm, ptei++ * 8, data);
+ 		data += map->next;
+@@ -195,6 +217,9 @@ gp100_vmm_pd0_pte(struct nvkm_vmm *vmm, struct nvkm_mmu_pt *pt,
+ {
+ 	u64 data = (addr >> 4) | map->type;
+ 
++	if (map->ctag)
++		data |= gp100_vmm_pte_comptagline_base(addr);
++
+ 	while (ptes--) {
+ 		VMM_WO128(pt, vmm, ptei++ * 0x10, data, 0ULL);
+ 		data += map->next;
+@@ -440,9 +465,26 @@ gp100_vmm_valid(struct nvkm_vmm *vmm, void *argv, u32 argc,
+ 		return -EINVAL;
+ 	}
+ 
++	/* Handle compression. */
+ 	if (kindm[kind] != kind) {
+-		/* Revert to non-compressed kind. */
+-		kind = kindm[kind];
++		struct nvkm_device *device = vmm->mmu->subdev.device;
++
++		/* Compression is only supported when using GSP-RM, as
++		 * PMU firmware is required in order to initialise the
++		 * compbit backing store.
++		 */
++		if (nvkm_gsp_rm(device->gsp)) {
++			/* Turing GPUs require PTE_COMPTAGLINE to be filled,
++			 * in addition to specifying a compressed kind.
++			 */
++			if (device->card_type < GA100) {
++				map->ctag  = gp100_vmm_pte_comptagline_incr(1 << map->page->shift);
++				map->next |= map->ctag;
++			}
++		} else {
++			/* Revert to non-compressed kind. */
++			kind = kindm[kind];
++		}
+ 	}
+ 
+ 	map->type |= BIT(0);
+-- 
+GitLab
+
