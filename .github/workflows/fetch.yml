@@ -1,0 +1,16 @@
+name: Fetch files
+on:
+  workflow_dispatch:
+  schedule: [{cron: "0 3 * * *"}]
+
+jobs:
+  run:
+  runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Run fetch script
+        shell: bash
+        run: ./fetch.sh
