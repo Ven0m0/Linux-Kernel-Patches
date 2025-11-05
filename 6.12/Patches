@@ -1,2 +1,4 @@
 https://raw.githubusercontent.com/firelzrd/kcompressd-unofficial/main/patches/stable/0001-linux6.12.44-kcompressd-unofficial-0.5.patch
 https://raw.githubusercontent.com/firelzrd/adios/main/patches/stable/0001-linux6.12.44-ADIOS-3.1.6.patch
+https://raw.githubusercontent.com/firelzrd/bore-scheduler/refs/heads/main/patches/stable/linux-6.12-bore/0002-sched-fair-Prefer-full-idle-SMT-cores.patch
+https://raw.githubusercontent.com/firelzrd/bore-scheduler/refs/heads/main/patches/stable/linux-6.12-bore/0001-linux6.12.37-bore-6.5.8.patch
