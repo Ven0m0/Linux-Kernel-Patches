@@ -27,12 +27,11 @@ https://github.com/firelzrd/le9uo/blob/main/le9uo_patches/0002-vm.workingset_pro
 https://github.com/firelzrd/le9uo/blob/main/le9uo_patches/stable/base/0001-linux6.16-le9uo-1.15.patch
 
 
-https://github.com/firelzrd/adios/blob/main/patches/0002-Make-ADIOS-the-Default-I-O-scheduler.patch
-https://github.com/firelzrd/adios/blob/main/patches/stable/0001-linux6.17-rc4-ADIOS-3.1.6.patch
+
 https://github.com/firelzrd/adios/tree/main/udev-rules
 
-
-
+https://raw.githubusercontent.com/firelzrd/adios/main/patches/stable/0001-linux6.17.4-ADIOS-3.1.7.patch
+https://raw.githubusercontent.com/firelzrd/adios/main/patches/0002-Make-ADIOS-the-Default-I-O-scheduler.patch
 
 
 
