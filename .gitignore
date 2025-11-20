@@ -1,0 +1,61 @@
+# Build artifacts
+*.o
+*.ko
+*.mod
+*.mod.c
+*.cmd
+*.so
+*.a
+*.pyc
+
+# Kernel build outputs
+.tmp_versions/
+modules.order
+Module.symvers
+*.unsigned
+
+# Editor and IDE files
+*~
+.*.swp
+.*.swo
+*.orig
+*.rej
+.vscode/
+.idea/
+*.sublime-*
+
+# OS files
+.DS_Store
+Thumbs.db
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+*.patch~
+
+# Local environment and configs
+.env
+.env.local
+local.conf
+
+# Compiled kernel images
+vmlinux*
+bzImage*
+zImage*
+
+# modprobed-db outputs
+modprobed.db
+*.modprobed*
+!sort-modprobed-dbs
+
+# Downloaded source archives
+*.tar.xz
+*.tar.gz
+*.tar.bz2
+
+# Build directories (if someone builds kernel here)
+build/
+linux-*/
+src/
+pkg/
