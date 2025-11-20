@@ -55,7 +55,12 @@ modprobed.db
 *.tar.bz2
 
 # Build directories (if someone builds kernel here)
-build/
+# Note: build/ directory contains catgirl-edition PKGBUILD, so we keep it
+# But ignore build artifacts within it
+build/catgirl-edition/src/
+build/catgirl-edition/pkg/
+build/catgirl-edition/*.tar.*
+build/catgirl-edition/*.pkg.tar.*
 linux-*/
 src/
 pkg/
