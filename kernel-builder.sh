@@ -108,7 +108,7 @@ build_t2linux(){
   mkdir -p kernel && cd kernel
   echo -e "${CYAN}Grabbing kernel and patches...${NC}"
   rm -rf patches 2> /dev/null || :
-  git clone --depth=1 https://github.com/t2linux/linux-t2-patches patches
+  git clone --depth=1 --filter=blob:none https://github.com/t2linux/linux-t2-patches patches
 
   # Get latest kernel version from T2-Ubuntu-Kernel releases
   pkgver=$(curl -sL https://github.com/t2linux/T2-Ubuntu-Kernel/releases/latest/ | grep "<title>Release" | awk -F " " '{print $2}' | cut -d "v" -f 2 | cut -d "-" -f 1)
@@ -125,12 +125,10 @@ build_t2linux(){
   kernelver=$(make kernelversion)
   localver=$(grep 'CONFIG_LOCALVERSION=' .config | awk -F '"' '{print $2}')
   kernelmajminver=$(echo "$kernelver" | awk -F "." '{print $1 "." $2}')
-
   # Grab RT patchset
   echo -e "${CYAN}Checking for real-time patches...${NC}"
   rtpatchfile=$(curl -s --location "https://kernel.org/pub/linux/kernel/projects/rt/$kernelmajminver/" | grep -ioE '<a href="(patch-.+)">' | awk -F '"' '{print $2}' | tail -n 1)
   rtver=$(echo "$rtpatchfile" | awk -F "-" '{print $3}' | awk -F "\\\." '{print "-" $1}')
-
   if [[ -n $rtpatchfile ]]; then
       echo -e "${GREEN}Grabbing real-time patches...${NC}"
       wget -O "../patches/$rtpatchfile" "https://kernel.org/pub/linux/kernel/projects/rt/$kernelmajminver/$rtpatchfile" || :
@@ -138,29 +136,27 @@ build_t2linux(){
       echo -e "${CYAN}Applying real-time patches...${NC}"
       patch -Np1 < "../patches/$(echo "$rtpatchfile" | head -c -4)" || :
   else
-      echo -e "${YELLOW}Real-time patches not available for this kernel version.${NC}"
+    echo -e "${YELLOW}Real-time patches not available for this kernel version.${NC}"
   fi
   echo -e "${CYAN}Configuring kernel...${NC}"
   # Disable debug info for smaller/faster builds
-    ./scripts/config --undefine GDB_SCRIPTS
-    ./scripts/config --undefine DEBUG_INFO
-    ./scripts/config --undefine DEBUG_INFO_SPLIT
-    ./scripts/config --undefine DEBUG_INFO_REDUCED
-    ./scripts/config --undefine DEBUG_INFO_COMPRESSED
-    ./scripts/config --set-val DEBUG_INFO_NONE y
-    ./scripts/config --set-val DEBUG_INFO_DWARF5 n
-    make olddefconfig
-    # Configure T2-specific modules
-    scripts/config --module CONFIG_BT_HCIBCM4377
-    scripts/config --module CONFIG_HID_APPLE_IBRIDGE
-    scripts/config --module CONFIG_HID_APPLE_TOUCHBAR
-    scripts/config --module CONFIG_HID_APPLE_MAGIC_BACKLIGHT
+  ./scripts/config --undefine GDB_SCRIPTS
+  ./scripts/config --undefine DEBUG_INFO
+  ./scripts/config --undefine DEBUG_INFO_SPLIT
+  ./scripts/config --undefine DEBUG_INFO_REDUCED
+  ./scripts/config --undefine DEBUG_INFO_COMPRESSED
+  ./scripts/config --set-val DEBUG_INFO_NONE y
+  ./scripts/config --set-val DEBUG_INFO_DWARF5 n
+  make olddefconfig
+  # Configure T2-specific modules
+  scripts/config --module CONFIG_BT_HCIBCM4377
+  scripts/config --module CONFIG_HID_APPLE_IBRIDGE
+  scripts/config --module CONFIG_HID_APPLE_TOUCHBAR
+  scripts/config --module CONFIG_HID_APPLE_MAGIC_BACKLIGHT
   echo -e "${GREEN}Building kernel (this may take a while)...${NC}"
   make && make modules_install
-
   echo -e "${GREEN}Installing kernel...${NC}"
   kernel-install add "$kernelver$rtver$localver" ./vmlinux
-
   echo -e "${GREEN}T2 Linux kernel build complete!${NC}"
   echo -e "${CYAN}Kernel version: $kernelver$rtver$localver${NC}"
   cd "$SCRIPT_DIR"
