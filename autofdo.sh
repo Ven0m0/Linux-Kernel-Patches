@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-export LC_ALL=C.UTF-8 LANG=C.UTF-8 LLVM=1 LLVM_IAS=1
+LC_ALL=C LANG=C 
+export LLVM=1 LLVM_IAS=1
 DIR="${HOME}/projects/kernel"
 KERNELDIR="${DIR}/linux/linux-cachyos/linux-cachyos"
 AUTOPROF="${KERNELDIR}/kernel-compilation.afdo"
