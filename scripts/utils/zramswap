@@ -7,55 +7,40 @@
 # References:
 # - https://www.kernel.org/doc/Documentation/blockdev/zram.txt
 # - https://github.com/firelzrd/zram-ir/blob/main/scripts/zramswap
-
 set -euo pipefail
-
 readonly CONFIG="/etc/default/zramswap"
 readonly SWAP_DEV="/dev/zram0"
 readonly HAS_LOGGER=$(command -v logger &>/dev/null && echo 1 || echo 0)
 
 # Logging functions
-elog() {
+elog(){
   local msg="Error: $*"
   [[ $HAS_LOGGER -eq 1 ]] && logger -s "$msg" || echo "$msg" >&2
   exit 1
 }
-
-wlog() {
-  [[ $HAS_LOGGER -eq 1 ]] && logger -s "$*" || echo "$*"
-}
-
-start() {
+wlog(){ [[ $HAS_LOGGER -eq 1 ]] && logger -s "$*" || echo "$*"; }
+start(){
   wlog "Starting ZRAM swap"
-
   # Load config with defaults
   [[ -r "$CONFIG" ]] && source "$CONFIG" 2>/dev/null || wlog "Using default configuration"
-
   # Set defaults if not specified
   : "${ALGO:=zstd:2,zstd:4}" "${SIZE:=256}" "${PRIORITY:=100}" "${PERCENT:=}"
-
   # Calculate size
   local size_bytes=$((SIZE * 1024 * 1024))
   if [[ -n "$PERCENT" ]]; then
     local total_mem=$(awk '/MemTotal/{print $2}' /proc/meminfo)
     size_bytes=$((total_mem * 1024 * PERCENT / 100))
   fi
-
   # Load zram module
   modprobe zram || elog "Failed to load zram kernel module"
-
   # Parse and validate algorithms
   IFS=',' read -ra algos <<< "$ALGO"
   [[ ${#algos[@]} -le 4 ]] || elog "Maximum 4 algorithms allowed (specified: ${#algos[@]})"
-
   # Configure compression algorithms
   for i in "${!algos[@]}"; do
     local algo_param="${algos[$i]}"
-    local algo="${algo_param%%:*}"
-    local param=""
-
+    local algo="${algo_param%%:*}" param=""
     [[ "$algo_param" == *:* ]] && param="level=${algo_param#*:}"
-
     if [[ $i -eq 0 ]]; then
       echo -n "$algo" > /sys/block/zram0/comp_algorithm || elog "Failed to set compression: $algo"
       [[ -n "$param" ]] && echo -n "$param priority=0" > /sys/block/zram0/algorithm_params
@@ -64,22 +49,18 @@ start() {
         elog "Failed to set recompression: $algo"
     fi
   done
-
   # Initialize swap
   echo -n "$size_bytes" > /sys/block/zram0/disksize || elog "Failed to set device size"
   mkswap "$SWAP_DEV" >/dev/null || elog "Failed to initialize swap device"
   swapon -p "$PRIORITY" "$SWAP_DEV" || elog "Failed to enable swap device"
-
   wlog "ZRAM swap started successfully ($(( size_bytes / 1024 / 1024 ))MB)"
 }
-
-status() {
+status(){
   command -v zramctl &>/dev/null || elog "zramctl not found (install util-linux)"
   [[ -b "$SWAP_DEV" ]] || elog "$SWAP_DEV doesn't exist"
   zramctl "$SWAP_DEV"
 }
-
-stop() {
+stop(){
   wlog "Stopping ZRAM swap"
   if [[ -b "$SWAP_DEV" ]]; then
     swapoff "$SWAP_DEV" 2>/dev/null || wlog "Failed to disable swap: $SWAP_DEV"
@@ -89,8 +70,7 @@ stop() {
     wlog "ZRAM device not found"
   fi
 }
-
-usage() {
+usage(){
   cat << EOF
 Usage: $(basename "$0") {start|stop|restart|status}
 
@@ -101,7 +81,6 @@ Commands:
   status   Show ZRAM device information
 EOF
 }
-
 case "${1:-}" in
   start)   start ;;
   stop)    stop ;;
