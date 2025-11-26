@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -eo pipefail
-LC_ALL=C
+
+export LC_ALL=C
 
 # Lists to process: [list_url]="target_dir"
 declare -A lists=(
@@ -8,16 +9,33 @@ declare -A lists=(
   ["https://raw.githubusercontent.com/Ven0m0/Linux-Kernel-Patches/main/6.12/Patches"]="lists/6.12"
 )
 
-fetch_list(){
+# Maximum parallel downloads (adjust based on your connection)
+readonly MAX_PARALLEL=${MAX_PARALLEL:-4}
+
+fetch_file() {
+  local src=$1 dest=$2
+  if curl -fsSL "$src" -o "${dest}.tmp" 2>/dev/null; then
+    mv "${dest}.tmp" "$dest"
+  else
+    echo "Failed: $src" >&2
+    rm -f "${dest}.tmp"
+    return 1
+  fi
+}
+
+fetch_list() {
   local url=$1 dir=$2
   mkdir -p "$dir"
+
   local list
   list=$(curl -fsSL "$url") || { echo "Failed: $url" >&2; return 1; }
-  
+
+  local -a pids=()
+  local job_count=0
+
   while IFS= read -r line; do
-    [[ $line =~ ^[[:space:]]*# ]] && continue
-    [[ $line =~ ^[[:space:]]*$ ]] && continue
-    
+    [[ $line =~ ^[[:space:]]*# || $line =~ ^[[:space:]]*$ ]] && continue
+
     local src dest
     if [[ $line =~ ^([^[:space:]]+)[[:space:]]+([^[:space:]]+)$ ]]; then
       src=${BASH_REMATCH[1]}
@@ -26,14 +44,25 @@ fetch_list(){
       src=$line
       dest=$(basename "$line")
     fi
-    
-    curl -fsSL "$src" -o "${dir}/${dest}.tmp" && mv "${dir}/${dest}.tmp" "${dir}/${dest}" || {
-      echo "Failed: $src" >&2
-      rm -f "${dir}/${dest}.tmp"
-    }
+
+    # Parallel download with job control
+    fetch_file "$src" "${dir}/${dest}" &
+    pids+=($!)
+    ((job_count++))
+
+    # Limit parallel jobs
+    if ((job_count >= MAX_PARALLEL)); then
+      wait "${pids[@]}"
+      pids=()
+      job_count=0
+    fi
   done <<<"$list"
+
+  # Wait for remaining jobs
+  [[ ${#pids[@]} -gt 0 ]] && wait "${pids[@]}"
 }
 
+# Fetch all lists
 for url in "${!lists[@]}"; do
   fetch_list "$url" "${lists[$url]}"
 done

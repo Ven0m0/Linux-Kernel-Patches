@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
+set -euo pipefail
+
 WORKDIR="$(builtin cd -- "$(dirname -- "${BASH_SOURCE[0]:-}")" && printf '%s\n' "$PWD")"
 builtin cd -- "$WORKDIR" || exit 1
 
 export LC_ALL=C
-_sort-moddbs(){
-  script_dir="${WORKDIR:-$PWD}"
-  for db in "$script_dir"/*/*modprobed.db do
-    sort "$db" | uniq > "$db.sorted"; mv "$db.sorted" "$db"
+
+_sort-moddbs() {
+  local script_dir="${WORKDIR:-$PWD}"
+  local db
+
+  for db in "$script_dir"/*/*modprobed.db; do
+    [[ -f "$db" ]] || continue
+    sort -u "$db" -o "$db.tmp" && mv "$db.tmp" "$db"
   done
 }
+
 _sort-moddbs

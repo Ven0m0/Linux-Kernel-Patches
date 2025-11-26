@@ -1,121 +1,135 @@
 #!/usr/bin/env bash
-# Trim kernel by deselecting options not enabled in the Clear Linux config.
-# Options already unset in the CachyOS config were pruned from this list.e
+# Trim kernel by deselecting options not enabled in the Clear Linux config
+# This significantly reduces kernel size by removing unused features
 
-cd "$1" || { echo "Directory not found: $1"; exit 1; }
+set -euo pipefail
 
-script_dir=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 export LC_ALL=C
-for db in "$script_dir"/*/*modprobed.db
-do
-  sort "$db" | uniq > "$db.sorted"
-  mv "$db.sorted" "$db"
+
+# Validate kernel source directory
+[[ -n "${1:-}" ]] || { echo "Error: Kernel source directory not specified" >&2; exit 1; }
+cd "$1" || { echo "Error: Directory not found: $1" >&2; exit 1; }
+[[ -f "scripts/config" ]] || { echo "Error: Not a valid kernel source tree" >&2; exit 1; }
+
+# Sort and deduplicate modprobed databases
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+for db in "$script_dir"/*/*modprobed.db; do
+  [[ -f "$db" ]] || continue
+  sort -u "$db" -o "$db"
 done
 
-# Processor type and features
-scripts/config -d XEN
-scripts/config -d PVH
-scripts/config -d PARAVIRT_TIME_ACCOUNTING
+# Processor type and features (batched)
+scripts/config \
+  -d XEN \
+  -d PVH \
+  -d PARAVIRT_TIME_ACCOUNTING
 
-# Partition Types
-scripts/config -d AIX_PARTITION
-scripts/config -d MAC_PARTITION
-scripts/config -d BSD_DISKLABEL
-scripts/config -d MINIX_SUBPARTITION
-scripts/config -d SOLARIS_X86_PARTITION
-scripts/config -d LDM_PARTITION
-scripts/config -d KARMA_PARTITION
+# Partition Types (batched)
+scripts/config \
+  -d AIX_PARTITION \
+  -d MAC_PARTITION \
+  -d BSD_DISKLABEL \
+  -d MINIX_SUBPARTITION \
+  -d SOLARIS_X86_PARTITION \
+  -d LDM_PARTITION \
+  -d KARMA_PARTITION
 
 # Data Access Monitoring
 scripts/config -d DAMON
 
-# Networking options
-scripts/config -d SMC_LO
-scripts/config -d IP_FIB_TRIE_STATS
-scripts/config -d IP_ROUTE_VERBOSE
-scripts/config -d NET_IPGRE_BROADCAST
-scripts/config -d IP_PIMSM_V1
-scripts/config -d IP_PIMSM_V2
-scripts/config -d NET_FOU_IP_TUNNELS
-scripts/config -d INET_DIAG
-scripts/config -d TCP_AO
-scripts/config -d INET6_ESPINTCP
-scripts/config -d IPV6_SIT_6RD
-scripts/config -d IPV6_SUBTREES
-scripts/config -d IPV6_MROUTE
-scripts/config -d IPV6_SEG6_LWTUNNEL
-scripts/config -d IPV6_SEG6_HMAC
-scripts/config -d IPV6_RPL_LWTUNNEL
-scripts/config -d IPV6_IOAM6_LWTUNNEL
+# Networking options (batched)
+scripts/config \
+  -d SMC_LO \
+  -d IP_FIB_TRIE_STATS \
+  -d IP_ROUTE_VERBOSE \
+  -d NET_IPGRE_BROADCAST \
+  -d IP_PIMSM_V1 \
+  -d IP_PIMSM_V2 \
+  -d NET_FOU_IP_TUNNELS \
+  -d INET_DIAG \
+  -d TCP_AO \
+  -d INET6_ESPINTCP \
+  -d IPV6_SIT_6RD \
+  -d IPV6_SUBTREES \
+  -d IPV6_MROUTE \
+  -d IPV6_SEG6_LWTUNNEL \
+  -d IPV6_SEG6_HMAC \
+  -d IPV6_RPL_LWTUNNEL \
+  -d IPV6_IOAM6_LWTUNNEL
 
-# Core Netfilter Configuration
-scripts/config -d NETFILTER_NETLINK_HOOK
-scripts/config -d NF_CONNTRACK_PROCFS
-scripts/config -d NF_CONNTRACK_TIMEOUT
-scripts/config -d NF_CONNTRACK_TIMESTAMP
-scripts/config -d NETFILTER_NETLINK_GLUE_CT
-scripts/config -d TIPC_MEDIA_IB
-scripts/config -d ATM
-scripts/config -d L2TP_V3
-scripts/config -d VLAN_8021Q_GVRP
-scripts/config -d VLAN_8021Q_MVRP
-scripts/config -d LLC2
-scripts/config -d ATALK
-scripts/config -d PHONET
-scripts/config -d 6LOWPAN_DEBUGFS
-scripts/config -d IEEE802154_NL802154_EXPERIMENTAL
+# Core Netfilter Configuration (batched)
+scripts/config \
+  -d NETFILTER_NETLINK_HOOK \
+  -d NF_CONNTRACK_PROCFS \
+  -d NF_CONNTRACK_TIMEOUT \
+  -d NF_CONNTRACK_TIMESTAMP \
+  -d NETFILTER_NETLINK_GLUE_CT \
+  -d TIPC_MEDIA_IB \
+  -d ATM \
+  -d L2TP_V3 \
+  -d VLAN_8021Q_GVRP \
+  -d VLAN_8021Q_MVRP \
+  -d LLC2 \
+  -d ATALK \
+  -d PHONET \
+  -d 6LOWPAN_DEBUGFS \
+  -d IEEE802154_NL802154_EXPERIMENTAL
 
-# Classification
-scripts/config -d CLS_U32_MARK
-scripts/config -d GACT_PROB
-scripts/config -d NET_ACT_GATE
-scripts/config -d NET_TC_SKB_EXT
-scripts/config -d BATMAN_ADV_NC
-scripts/config -d BATMAN_ADV_MCAST
-scripts/config -d HSR
-scripts/config -d QRTR_SMD
-scripts/config -d QRTR_TUN
-scripts/config -d NET_NCSI
+# Classification (batched)
+scripts/config \
+  -d CLS_U32_MARK \
+  -d GACT_PROB \
+  -d NET_ACT_GATE \
+  -d NET_TC_SKB_EXT \
+  -d BATMAN_ADV_NC \
+  -d BATMAN_ADV_MCAST \
+  -d HSR \
+  -d QRTR_SMD \
+  -d QRTR_TUN \
+  -d NET_NCSI
 
-# Network testing
-scripts/config -d HAMRADIO
-scripts/config -d CAN_ISOTP
-scripts/config -d BT_LEDS
-scripts/config -d BT_AOSPEXT
-scripts/config -d BT_DEBUGFS
+# Network testing and Bluetooth (batched)
+scripts/config \
+  -d HAMRADIO \
+  -d CAN_ISOTP \
+  -d BT_LEDS \
+  -d BT_AOSPEXT \
+  -d BT_DEBUGFS
 
-# Bluetooth device drivers
-scripts/config -d BT_HCIUART_BCSP
-scripts/config -d BT_HCIUART_ATH3K
-scripts/config -d BT_HCIUART_LL
-scripts/config -d BT_HCIUART_3WIRE
-scripts/config -d BT_HCIUART_RTL
-scripts/config -d BT_HCIUART_QCA
-scripts/config -d BT_HCIUART_AG6XX
-scripts/config -d BT_HCIUART_MRVL
-scripts/config -d BT_MTKUART
-scripts/config -d BT_NXPUART
-scripts/config -d AF_RXRPC_IPV6
-scripts/config -d AF_RXRPC_DEBUG
-scripts/config -d RXKAD
-scripts/config -d MCTP
-scripts/config -d CFG80211_CERTIFICATION_ONUS
-scripts/config -d CFG80211_DEBUGFS
-scripts/config -d MAC80211_MESH
-scripts/config -d CEPH_LIB_PRETTYDEBUG
-scripts/config -d CEPH_LIB_USE_DNS_RESOLVER
-scripts/config -d NFC_NCI_SPI
-scripts/config -d NFC_NCI_UART
-scripts/config -d NFC_SHDLC
+# Bluetooth device drivers (batched)
+scripts/config \
+  -d BT_HCIUART_BCSP \
+  -d BT_HCIUART_ATH3K \
+  -d BT_HCIUART_LL \
+  -d BT_HCIUART_3WIRE \
+  -d BT_HCIUART_RTL \
+  -d BT_HCIUART_QCA \
+  -d BT_HCIUART_AG6XX \
+  -d BT_HCIUART_MRVL \
+  -d BT_MTKUART \
+  -d BT_NXPUART \
+  -d AF_RXRPC_IPV6 \
+  -d AF_RXRPC_DEBUG \
+  -d RXKAD \
+  -d MCTP \
+  -d CFG80211_CERTIFICATION_ONUS \
+  -d CFG80211_DEBUGFS \
+  -d MAC80211_MESH \
+  -d CEPH_LIB_PRETTYDEBUG \
+  -d CEPH_LIB_USE_DNS_RESOLVER \
+  -d NFC_NCI_SPI \
+  -d NFC_NCI_UART \
+  -d NFC_SHDLC
 
-# Near Field Communication (NFC) devices
-scripts/config -d NFC_FDP
-scripts/config -d NFC_MRVL_I2C
-scripts/config -d NFC_ST_NCI_I2C
-scripts/config -d NFC_ST_NCI_SPI
-scripts/config -d NFC_S3FWRN5_I2C
-scripts/config -d NFC_S3FWRN82_UART
-scripts/config -d NFC_ST95HF
+# Near Field Communication devices (batched)
+scripts/config \
+  -d NFC_FDP \
+  -d NFC_MRVL_I2C \
+  -d NFC_ST_NCI_I2C \
+  -d NFC_ST_NCI_SPI \
+  -d NFC_S3FWRN5_I2C \
+  -d NFC_S3FWRN82_UART \
+  -d NFC_ST95HF
 
 # Device Drivers
 scripts/config -d PCIEAER_INJECT
