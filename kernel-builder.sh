@@ -7,8 +7,8 @@
 # - linux-catgirl-edition: Optimized kernel builds with PKGBUILD
 # - tkginstaller: TKG package management and TUI
 # =============================================================================
-set -Eeuo pipefail
-shopt -s nullglob globstar extglob
+set -e
+shopt -s nullglob globstar
 IFS=$'\n\t'
 export LC_ALL=C LANG=C
 VERSION="1.0.0"
