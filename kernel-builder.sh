@@ -24,19 +24,29 @@ die(){ printf '%b\n' "${RED}Error:${DEF} $*" >&2; exit 1; }
 info(){ printf '%b\n' "${GRN}$*${DEF}"; }
 warn(){ printf '%b\n' "${YLW}$*${DEF}"; }
 msg(){ printf '%b\n' "${CYN}$*${DEF}"; }
-# Fetch URL to stdout or file
+# Common curl options for all downloads
+readonly CURL_OPTS=(
+  --fail                # Fail on HTTP errors (4xx, 5xx)
+  --location            # Follow redirects
+  --proto '=https'      # Only allow HTTPS protocol
+  --tlsv1.2             # Minimum TLS version 1.2
+  --compressed          # Enable compression for faster transfers
+  --connect-timeout 15  # Connection timeout in seconds
+  --retry 3             # Retry on transient errors
+  --retry-delay 2       # Delay between retries (seconds)
+  --retry-max-time 60   # Maximum time to spend on retries
+)
+# Fetch URL to stdout or file (silent mode)
 fetch(){
   local url=$1 out=${2:-}
-  if [[ -n $out ]]; then
-    curl -fsSL --proto '=https' --tlsv1.2 -o "$out" "$url"
-  else
-    curl -fsSL --proto '=https' --tlsv1.2 "$url"
-  fi
+  local opts=("${CURL_OPTS[@]}" --silent --show-error)
+  [[ -n $out ]] && opts+=(--output "$out")
+  curl "${opts[@]}" "$url"
 }
-# Download with progress
+# Download with progress bar
 fetch_progress(){
   local url=$1 out=$2
-  curl -fL --proto '=https' --tlsv1.2 -# -o "$out" "$url"
+  curl "${CURL_OPTS[@]}" --progress-bar --output "$out" "$url"
 }
 #──────────── Banner ────────────────────
 show_banner(){
