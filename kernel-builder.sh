@@ -25,28 +25,11 @@ info(){ printf '%b\n' "${GRN}$*${DEF}"; }
 warn(){ printf '%b\n' "${YLW}$*${DEF}"; }
 msg(){ printf '%b\n' "${CYN}$*${DEF}"; }
 # Common curl options for all downloads
-readonly CURL_OPTS=(
-  --fail                # Fail on HTTP errors (4xx, 5xx)
-  --location            # Follow redirects
-  --proto '=https'      # Only allow HTTPS protocol
-  --tlsv1.2             # Minimum TLS version 1.2
-  --compressed          # Enable compression for faster transfers
-  --connect-timeout 15  # Connection timeout in seconds
-  --retry 3             # Retry on transient errors
-  --retry-delay 2       # Delay between retries (seconds)
-  --retry-max-time 60   # Maximum time to spend on retries
-)
+readonly CURL_OPTS=(-fLSs --proto '=https' --tlsv1.2 --compressed --connect-timeout 15 --retry 3 --retry-delay 2 --retry-max-time 60 --progress-bar)
 # Fetch URL to stdout or file (silent mode)
 fetch(){
-  local url=$1 out=${2:-}
-  local opts=("${CURL_OPTS[@]}" --silent --show-error)
-  [[ -n $out ]] && opts+=(--output "$out")
+  local url=$1 out=${2:-}; [[ -n $out ]] && opts+=(-o "$out")
   curl "${opts[@]}" "$url"
-}
-# Download with progress bar
-fetch_progress(){
-  local url=$1 out=$2
-  curl "${CURL_OPTS[@]}" --progress-bar --output "$out" "$url"
 }
 #──────────── Banner ────────────────────
 show_banner(){
@@ -147,7 +130,7 @@ build_t2linux(){
   _srcname="linux-${pkgver}"
   msg "Downloading kernel ${pkgver}..."
   local major_ver=${pkgver%%.*}
-  fetch_progress "https://kernel.org/pub/linux/kernel/v${major_ver}.x/${_srcname}.tar.xz" "${_srcname}.tar.xz"
+  fetch "https://kernel.org/pub/linux/kernel/v${major_ver}.x/${_srcname}.tar.xz" "${_srcname}.tar.xz"
   tar xf "${_srcname}.tar.xz"
   cd "$_srcname"
   # Apply T2 patches
@@ -173,7 +156,7 @@ build_t2linux(){
       # Extract RT version (-rtN)
       [[ $rtpatchfile =~ -rt([0-9]+) ]] && rtver="-rt${BASH_REMATCH[1]}"
       info "Grabbing real-time patches..."
-      fetch_progress "https://kernel.org/pub/linux/kernel/projects/rt/${kernelmajminver}/${rtpatchfile}" "../patches/${rtpatchfile}" || :
+      fetch "https://kernel.org/pub/linux/kernel/projects/rt/${kernelmajminver}/${rtpatchfile}" "../patches/${rtpatchfile}" || :
       if [[ -f ../patches/${rtpatchfile} ]]; then
         xz -d "../patches/${rtpatchfile}" || :
         local rtpatch_uncompressed=${rtpatchfile%.xz}
