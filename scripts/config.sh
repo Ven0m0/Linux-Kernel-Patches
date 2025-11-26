@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Set extra kernel options.
+# Set extra kernel options for optimized kernel builds
 
-### Exit immediately on error.
-set -e
+set -euo pipefail
 
-cd "$1" || { echo "Directory not found: $1"; exit 1; }
+# Validate kernel source directory
+[[ -n "${1:-}" ]] || { echo "Error: Kernel source directory not specified" >&2; exit 1; }
+cd "$1" || { echo "Error: Directory not found: $1" >&2; exit 1; }
+[[ -f "scripts/config" ]] || { echo "Error: Not a valid kernel source tree" >&2; exit 1; }
 
 # commands:
 #     --enable   | -e option   Enable option
@@ -112,190 +114,187 @@ scripts/config -d SYNTH_EVENTS
 scripts/config -d USER_EVENTS
 scripts/config -d HIST_TRIGGERS
 
-# Debug https://git.staropensource.de/JeremyStarTM/aur-linux-clear/src/branch/develop/PKGBUILD
-scripts/config -d DEBUG_INFO
-scripts/config -d DEBUG_INFO_BTF
-scripts/config -d DEBUG_INFO_DWARF4
-scripts/config -d PAHOLE_HAS_SPLIT_BTF
-scripts/config -d DEBUG_INFO_BTF_MODULES
+# Disable debug symbols and BTF (batched for performance)
+scripts/config \
+  -d DEBUG_INFO \
+  -d DEBUG_INFO_BTF \
+  -d DEBUG_INFO_DWARF4 \
+  -d PAHOLE_HAS_SPLIT_BTF \
+  -d DEBUG_INFO_BTF_MODULES
 
-### Disable debug.
-scripts/config -d SLUB_DEBUG
-scripts/config -d SLUB_DEBUG_ON
-scripts/config -d PAGE_POISONING
-scripts/config -d GDB_SCRIPTS
-scripts/config -d ACPI_DEBUG
-scripts/config -d PM_DEBUG
-scripts/config -d PM_ADVANCED_DEBUG
-scripts/config -d PM_SLEEP_DEBUG
-scripts/config -d PM_TRACE_RTC
-scripts/config -d LATENCYTOP
-scripts/config -d LEDS_TRIGGER_CPU
-scripts/config -d LEDS_TRIGGER_GPIO
-scripts/config -d PCIEAER_INJECT
-scripts/config -d PCIE_ECRC
-scripts/config -d GENERIC_IRQ_DEBUGFS
-scripts/config -d GENERIC_IRQ_INJECTION
-scripts/config -d FUNCTION_ERROR_INJECTION
-scripts/config -d PRINTK_INDEX
-scripts/config -d SOFTLOCKUP_DETECTOR_INTR_STORM
-scripts/config -d GENERIC_IRQ_STAT_SNAPSHOT
-scripts/config -d 6LOWPAN_DEBUGFS
-scripts/config -d AF_RXRPC_DEBUG
-scripts/config -d AFS_DEBUG
-scripts/config -d AFS_DEBUG_CURSOR
-scripts/config -d ATA_VERBOSE_ERROR
-scripts/config -d ATH10K_DEBUG
-scripts/config -d ATH10K_DEBUGFS
-scripts/config -d ATH12K_DEBUG
-scripts/config -d ATH5K_DEBUG
-scripts/config -d ATH6KL_DEBUG
-scripts/config -d ATH9K_HTC_DEBUGFS
-scripts/config -d ATM_ENI_DEBUG
-scripts/config -d ATM_IA_DEBUG
-scripts/config -d ATM_IDT77252_DEBUG
-scripts/config -d BCACHE_DEBUG
-scripts/config -d BCACHEFS_DEBUG
-scripts/config -d BEFS_DEBUG
-scripts/config -d BLK_DEBUG_FS
-scripts/config -d BT_DEBUGFS
-scripts/config -d CEPH_LIB_PRETTYDEBUG
-scripts/config -d CFG80211_DEBUGFS
-scripts/config -d CIFS_DEBUG
-scripts/config -d CIFS_DEBUG2
-scripts/config -d CIFS_DEBUG_DUMP_KEYS
-scripts/config -d CMA_DEBUGFS
-scripts/config -d CROS_EC_DEBUGFS
-scripts/config -d CRYPTO_DEV_AMLOGIC_GXL_DEBUG
-scripts/config -d CRYPTO_DEV_CCP_DEBUGFS
-scripts/config -d DEBUG_KMAP_LOCAL_FORCE_MAP
-scripts/config -d DEBUG_MEMORY_INIT
-scripts/config -d DEBUG_RODATA_TEST
-scripts/config -d DEBUG_RSEQ
-scripts/config -d DEBUG_WX
-scripts/config -d DLM_DEBUG
-scripts/config -d DM_DEBUG_BLOCK_MANAGER_LOCKING
-scripts/config -d DM_DEBUG_BLOCK_STACK_TRACING
-scripts/config -d DRM_ACCEL_IVPU_DEBUG
-scripts/config -d DRM_DEBUG_DP_MST_TOPOLOGY_REFS
-scripts/config -d DRM_DEBUG_MODESET_LOCK
-scripts/config -d DRM_DISPLAY_DP_TUNNEL_STATE_DEBUG
-scripts/config -d DRM_I915_DEBUG
-scripts/config -d DRM_I915_DEBUG_GUC
-scripts/config -d DRM_I915_DEBUG_MMIO
-scripts/config -d DRM_I915_DEBUG_VBLANK_EVADE
-scripts/config -d DRM_I915_DEBUG_WAKEREF
-scripts/config -d DRM_I915_SW_FENCE_DEBUG_OBJECTS
-scripts/config -d DRM_XE_DEBUG
-scripts/config -d DRM_XE_DEBUG_MEM
-scripts/config -d DRM_XE_DEBUG_MEMIRQ
-scripts/config -d DRM_XE_DEBUG_SRIOV
-scripts/config -d DRM_XE_DEBUG_VM
-scripts/config -d DVB_USB_DEBUG
-scripts/config -d EARLY_PRINTK_DBGP
-scripts/config -d EARLY_PRINTK_USB_XDBC
-scripts/config -d EXT4_DEBUG
-scripts/config -d HIST_TRIGGERS_DEBUG
-scripts/config -d INFINIBAND_MTHCA_DEBUG
-scripts/config -d IWLEGACY_DEBUG
-scripts/config -d IWLWIFI_DEBUG
-scripts/config -d JFS_DEBUG
-scripts/config -d LDM_DEBUG
-scripts/config -d LIBERTAS_THINFIRM_DEBUG
-scripts/config -d NETFS_DEBUG
-scripts/config -d NFS_DEBUG
-scripts/config -d NVME_TARGET_DEBUGFS
-scripts/config -d NVME_VERBOSE_ERRORS
-scripts/config -d OCFS2_DEBUG_FS
-scripts/config -d PNP_DEBUG_MESSAGES
-scripts/config -d QUOTA_DEBUG
-scripts/config -d RTLWIFI_DEBUG
-scripts/config -d RTW88_DEBUG
-scripts/config -d RTW88_DEBUGFS
-scripts/config -d RTW89_DEBUGFS
-scripts/config -d RTW89_DEBUGMSG
-scripts/config -d SHRINKER_DEBUG
-scripts/config -d SMS_SIANO_DEBUGFS
-scripts/config -d SND_SOC_SOF_DEBUG
-scripts/config -d SUNRPC_DEBUG
-scripts/config -d UFS_DEBUG
-scripts/config -d USB_DWC2_DEBUG
-scripts/config -d VFIO_DEBUGFS
-scripts/config -d VIRTIO_DEBUG
-scripts/config -d VISL_DEBUGFS
-scripts/config -d WCN36XX_DEBUGFS
-scripts/config -d WWAN_DEBUGFS
-scripts/config -d XEN_DEBUG_FS
-scripts/config -d USB_PRINTER
+# Disable general debugging features (batched)
+scripts/config \
+  -d SLUB_DEBUG \
+  -d SLUB_DEBUG_ON \
+  -d PAGE_POISONING \
+  -d GDB_SCRIPTS \
+  -d ACPI_DEBUG \
+  -d PM_DEBUG \
+  -d PM_ADVANCED_DEBUG \
+  -d PM_SLEEP_DEBUG \
+  -d PM_TRACE_RTC \
+  -d LATENCYTOP \
+  -d LEDS_TRIGGER_CPU \
+  -d LEDS_TRIGGER_GPIO \
+  -d PCIEAER_INJECT \
+  -d PCIE_ECRC \
+  -d GENERIC_IRQ_DEBUGFS \
+  -d GENERIC_IRQ_INJECTION \
+  -d FUNCTION_ERROR_INJECTION \
+  -d PRINTK_INDEX \
+  -d SOFTLOCKUP_DETECTOR_INTR_STORM \
+  -d GENERIC_IRQ_STAT_SNAPSHOT
+# Disable subsystem-specific debugging (batched for performance)
+scripts/config \
+  -d 6LOWPAN_DEBUGFS \
+  -d AF_RXRPC_DEBUG \
+  -d AFS_DEBUG \
+  -d AFS_DEBUG_CURSOR \
+  -d ATA_VERBOSE_ERROR \
+  -d ATH10K_DEBUG \
+  -d ATH10K_DEBUGFS \
+  -d ATH12K_DEBUG \
+  -d ATH5K_DEBUG \
+  -d ATH6KL_DEBUG \
+  -d ATH9K_HTC_DEBUGFS \
+  -d ATM_ENI_DEBUG \
+  -d ATM_IA_DEBUG \
+  -d ATM_IDT77252_DEBUG \
+  -d BCACHE_DEBUG \
+  -d BCACHEFS_DEBUG \
+  -d BEFS_DEBUG \
+  -d BLK_DEBUG_FS \
+  -d BT_DEBUGFS \
+  -d CEPH_LIB_PRETTYDEBUG \
+  -d CFG80211_DEBUGFS \
+  -d CIFS_DEBUG \
+  -d CIFS_DEBUG2 \
+  -d CIFS_DEBUG_DUMP_KEYS \
+  -d CMA_DEBUGFS \
+  -d CROS_EC_DEBUGFS \
+  -d CRYPTO_DEV_AMLOGIC_GXL_DEBUG \
+  -d CRYPTO_DEV_CCP_DEBUGFS \
+  -d DEBUG_KMAP_LOCAL_FORCE_MAP \
+  -d DEBUG_MEMORY_INIT \
+  -d DEBUG_RODATA_TEST \
+  -d DEBUG_RSEQ \
+  -d DEBUG_WX \
+  -d DLM_DEBUG \
+  -d DM_DEBUG_BLOCK_MANAGER_LOCKING \
+  -d DM_DEBUG_BLOCK_STACK_TRACING \
+  -d DRM_ACCEL_IVPU_DEBUG \
+  -d DRM_DEBUG_DP_MST_TOPOLOGY_REFS \
+  -d DRM_DEBUG_MODESET_LOCK \
+  -d DRM_DISPLAY_DP_TUNNEL_STATE_DEBUG \
+  -d DRM_I915_DEBUG \
+  -d DRM_I915_DEBUG_GUC \
+  -d DRM_I915_DEBUG_MMIO \
+  -d DRM_I915_DEBUG_VBLANK_EVADE \
+  -d DRM_I915_DEBUG_WAKEREF \
+  -d DRM_I915_SW_FENCE_DEBUG_OBJECTS \
+  -d DRM_XE_DEBUG \
+  -d DRM_XE_DEBUG_MEM \
+  -d DRM_XE_DEBUG_MEMIRQ \
+  -d DRM_XE_DEBUG_SRIOV \
+  -d DRM_XE_DEBUG_VM \
+  -d DVB_USB_DEBUG \
+  -d EARLY_PRINTK_DBGP \
+  -d EARLY_PRINTK_USB_XDBC \
+  -d EXT4_DEBUG \
+  -d HIST_TRIGGERS_DEBUG \
+  -d INFINIBAND_MTHCA_DEBUG \
+  -d IWLEGACY_DEBUG \
+  -d IWLWIFI_DEBUG \
+  -d JFS_DEBUG \
+  -d LDM_DEBUG \
+  -d LIBERTAS_THINFIRM_DEBUG \
+  -d NETFS_DEBUG \
+  -d NFS_DEBUG \
+  -d NVME_TARGET_DEBUGFS \
+  -d NVME_VERBOSE_ERRORS \
+  -d OCFS2_DEBUG_FS \
+  -d PNP_DEBUG_MESSAGES \
+  -d QUOTA_DEBUG \
+  -d RTLWIFI_DEBUG \
+  -d RTW88_DEBUG \
+  -d RTW88_DEBUGFS \
+  -d RTW89_DEBUGFS \
+  -d RTW89_DEBUGMSG \
+  -d SHRINKER_DEBUG \
+  -d SMS_SIANO_DEBUGFS \
+  -d SND_SOC_SOF_DEBUG \
+  -d SUNRPC_DEBUG \
+  -d UFS_DEBUG \
+  -d USB_DWC2_DEBUG \
+  -d VFIO_DEBUGFS \
+  -d VIRTIO_DEBUG \
+  -d VISL_DEBUGFS \
+  -d WCN36XX_DEBUGFS \
+  -d WWAN_DEBUGFS \
+  -d XEN_DEBUG_FS \
+  -d USB_PRINTER
 
-# Disable AMD Secure Memory Encryption (SME) support
-scripts/config -d AMD_MEM_ENCRYPT
+# Disable security features not needed for desktop
+scripts/config \
+  -d AMD_MEM_ENCRYPT \
+  -d X86_SGX
 
-# Disable Intel Software Guard eXtensions (SGX)
-scripts/config -d X86_SGX
+# Disable direct rendering manager drivers (batched)
+scripts/config \
+  -d DRM_ACCEL_AMDXDNA \
+  -d DRM_AMDGPU \
+  -d DRM_APPLETBDRM \
+  -d DRM_ARCPGU \
+  -d DRM_HISI_HIBMC \
+  -d DRM_I915 \
+  -d DRM_RADEON \
+  -d DRM_XE \
+  -d DRM_AST \
+  -d DRM_MGAG200
 
-# Disable direct rendering manager support
-scripts/config -d DRM_ACCEL_AMDXDNA
-scripts/config -d DRM_AMDGPU
-scripts/config -d DRM_APPLETBDRM
-scripts/config -d DRM_ARCPGU
-scripts/config -d DRM_HISI_HIBMC
-scripts/config -d DRM_I915
-scripts/config -d DRM_RADEON
-scripts/config -d DRM_XE
-scripts/config -d DRM_AST
-scripts/config -d DRM_MGAG200
+# Disable laptop support (batched)
+scripts/config \
+  -d CHROMEOS_LAPTOP \
+  -d COMPAL_LAPTOP \
+  -d DELL_LAPTOP \
+  -d EEEPC_LAPTOP \
+  -d FUJITSU_LAPTOP \
+  -d IDEAPAD_LAPTOP \
+  -d LG_LAPTOP \
+  -d MSI_LAPTOP \
+  -d PANASONIC_LAPTOP \
+  -d SAMSUNG_LAPTOP \
+  -d SONY_LAPTOP \
+  -d TOPSTAR_LAPTOP
 
-# Disable laptop support
-#scripts/config -d ASUS_LAPTOP
-scripts/config -d CHROMEOS_LAPTOP
-scripts/config -d COMPAL_LAPTOP
-scripts/config -d DELL_LAPTOP
-scripts/config -d EEEPC_LAPTOP
-scripts/config -d FUJITSU_LAPTOP
-scripts/config -d IDEAPAD_LAPTOP
-scripts/config -d LG_LAPTOP
-scripts/config -d MSI_LAPTOP
-scripts/config -d PANASONIC_LAPTOP
-scripts/config -d SAMSUNG_LAPTOP
-scripts/config -d SONY_LAPTOP
-scripts/config -d TOPSTAR_LAPTOP
+# Disable platform support (batched)
+scripts/config \
+  -d CZNIC_PLATFORMS \
+  -d MELLANOX_PLATFORM \
+  -d SURFACE_PLATFORMS
 
-# Disable platform support
-#scripts/config -d CHROME_PLATFORMS
-scripts/config -d CZNIC_PLATFORMS
-scripts/config -d MELLANOX_PLATFORM
-scripts/config -d SURFACE_PLATFORMS
+# Disable input devices not needed (batched)
+scripts/config \
+  -d KEYBOARD_ATKBD \
+  -d MOUSE_PS2 \
+  -d SERIO_I8042 \
+  -d INPUT_TOUCHSCREEN
 
-# Disable PS/2 keyboard and mouse
-scripts/config -d KEYBOARD_ATKBD -d MOUSE_PS2 -d SERIO_I8042
+# Disable subsystems not needed (batched)
+scripts/config \
+  -d CAN \
+  -d IIO \
+  -d INFINIBAND \
+  -d BE2NET \
+  -d PARPORT \
+  -d SSB
 
-# Disable touchscreen input devices
-scripts/config -d INPUT_TOUCHSCREEN
-
-# Disable Controller Area Network (CAN) bus subsystem support
-scripts/config -d CAN
-
-# Disable industrial I/O subsystem support
-scripts/config -d IIO
-
-# Disable InfiniBand support
-scripts/config -d INFINIBAND
-
-# Disable ServerEngines' 10Gbps NIC - BladeEngine ethernet support
-scripts/config -d BE2NET
-
-# Disable Mellanox Technologies ethernet support
-scripts/config -d MLX4_EN
-scripts/config -d MLX5_CORE
-scripts/config -d MLXSW_CORE
-scripts/config -d MLXFW
-
-# Disable parallel port support
-scripts/config -d PARPORT
-
-# Disable Sonics Silicon Backplane support
-scripts/config -d SSB
+# Disable Mellanox ethernet (batched)
+scripts/config \
+  -d MLX4_EN \
+  -d MLX5_CORE \
+  -d MLXSW_CORE \
+  -d MLXFW
 
 # Disable media tuners
 scripts/config -d DVB_CORE
@@ -317,75 +316,72 @@ scripts/config -d VIDEO_STK1160
 # Disable GSPCA based webcams
 scripts/config -d USB_GSPCA
 
-# Disable network drivers
-scripts/config -d NET_VENDOR_ADI
-scripts/config -d NET_VENDOR_AGERE
-scripts/config -d NET_VENDOR_AMAZON
-scripts/config -d NET_VENDOR_AMD
-scripts/config -d NET_VENDOR_AQUANTIA
-scripts/config -d NET_VENDOR_ASIX
-scripts/config -d NET_VENDOR_ATHEROS
-scripts/config -d NET_VENDOR_BROADCOM
-scripts/config -d NET_VENDOR_CADENCE
-scripts/config -d NET_VENDOR_CHELSIO
-scripts/config -d NET_VENDOR_CISCO
-scripts/config -d NET_VENDOR_CORTINA
-scripts/config -d NET_VENDOR_DAVICOM
-scripts/config -d NET_VENDOR_DLINK
-scripts/config -d NET_VENDOR_EMULEX
-scripts/config -d NET_VENDOR_ENGLEDER
-scripts/config -d NET_VENDOR_FUNGIBLE
-scripts/config -d NET_VENDOR_GOOGLE
-scripts/config -d NET_VENDOR_HISILICON
-scripts/config -d NET_VENDOR_HUAWEI
-scripts/config -d NET_VENDOR_I825XX
-scripts/config -d NET_VENDOR_INTEL
-scripts/config -d NET_VENDOR_LITEX
-scripts/config -d NET_VENDOR_MARVELL
-scripts/config -d NET_VENDOR_MELLANOX
-scripts/config -d NET_VENDOR_META
-scripts/config -d NET_VENDOR_MICROSOFT
-scripts/config -d NET_VENDOR_NETRONOME
-scripts/config -d NET_VENDOR_NI
-scripts/config -d NET_VENDOR_PACKET_ENGINES
-scripts/config -d NET_VENDOR_QLOGIC
-scripts/config -d NET_VENDOR_SOCIONEXT
-scripts/config -d NET_VENDOR_SOLARFLARE
-scripts/config -d NET_VENDOR_STMICRO
-scripts/config -d NET_VENDOR_VERTEXCOM
-scripts/config -d NET_VENDOR_WANGXUN
+# Disable network vendor drivers (batched for faster configuration)
+scripts/config \
+  -d NET_VENDOR_ADI \
+  -d NET_VENDOR_AGERE \
+  -d NET_VENDOR_AMAZON \
+  -d NET_VENDOR_AMD \
+  -d NET_VENDOR_AQUANTIA \
+  -d NET_VENDOR_ASIX \
+  -d NET_VENDOR_ATHEROS \
+  -d NET_VENDOR_BROADCOM \
+  -d NET_VENDOR_CADENCE \
+  -d NET_VENDOR_CHELSIO \
+  -d NET_VENDOR_CISCO \
+  -d NET_VENDOR_CORTINA \
+  -d NET_VENDOR_DAVICOM \
+  -d NET_VENDOR_DLINK \
+  -d NET_VENDOR_EMULEX \
+  -d NET_VENDOR_ENGLEDER \
+  -d NET_VENDOR_FUNGIBLE \
+  -d NET_VENDOR_GOOGLE \
+  -d NET_VENDOR_HISILICON \
+  -d NET_VENDOR_HUAWEI \
+  -d NET_VENDOR_I825XX \
+  -d NET_VENDOR_INTEL \
+  -d NET_VENDOR_LITEX \
+  -d NET_VENDOR_MARVELL \
+  -d NET_VENDOR_MELLANOX \
+  -d NET_VENDOR_META \
+  -d NET_VENDOR_MICROSOFT \
+  -d NET_VENDOR_NETRONOME \
+  -d NET_VENDOR_NI \
+  -d NET_VENDOR_PACKET_ENGINES \
+  -d NET_VENDOR_QLOGIC \
+  -d NET_VENDOR_SOCIONEXT \
+  -d NET_VENDOR_SOLARFLARE \
+  -d NET_VENDOR_STMICRO \
+  -d NET_VENDOR_VERTEXCOM \
+  -d NET_VENDOR_WANGXUN
 
-# Disable SLIP (serial line) support
-scripts/config -d SLIP
+# Disable wireless and serial networking (batched)
+scripts/config \
+  -d SLIP \
+  -d WAN \
+  -d 6LOWPAN \
+  -d IEEE802154 \
+  -d WLAN
 
-# Disable Wan interfaces support
-scripts/config -d WAN
-
-# Disable IPv6 over Low power Wireless Personal Area Network
-scripts/config -d 6LOWPAN -d IEEE802154
-
-# Disable wireless LAN drivers
-scripts/config -d WLAN
-
-# Disable wireless vendor support
-# https://github.com/torvalds/linux/blob/master/drivers/net/wireless/
-scripts/config -d WLAN_VENDOR_ADMTEK
-scripts/config -d WLAN_VENDOR_ATH
-scripts/config -d WLAN_VENDOR_ATMEL
-scripts/config -d WLAN_VENDOR_BROADCOM
-scripts/config -d WLAN_VENDOR_INTEL
-scripts/config -d WLAN_VENDOR_INTERSIL
-scripts/config -d WLAN_VENDOR_MARVELL
-scripts/config -d WLAN_VENDOR_MEDIATEK
-scripts/config -d WLAN_VENDOR_PURELIFI
-scripts/config -d WLAN_VENDOR_QUANTENNA
-scripts/config -d WLAN_VENDOR_RALINK
-scripts/config -d WLAN_VENDOR_REALTEK
-scripts/config -d WLAN_VENDOR_RSI
-scripts/config -d WLAN_VENDOR_SILABS
-scripts/config -d WLAN_VENDOR_ST
-scripts/config -d WLAN_VENDOR_TI
-scripts/config -d WLAN_VENDOR_ZYDAS
+# Disable wireless vendor support (batched)
+scripts/config \
+  -d WLAN_VENDOR_ADMTEK \
+  -d WLAN_VENDOR_ATH \
+  -d WLAN_VENDOR_ATMEL \
+  -d WLAN_VENDOR_BROADCOM \
+  -d WLAN_VENDOR_INTEL \
+  -d WLAN_VENDOR_INTERSIL \
+  -d WLAN_VENDOR_MARVELL \
+  -d WLAN_VENDOR_MEDIATEK \
+  -d WLAN_VENDOR_PURELIFI \
+  -d WLAN_VENDOR_QUANTENNA \
+  -d WLAN_VENDOR_RALINK \
+  -d WLAN_VENDOR_REALTEK \
+  -d WLAN_VENDOR_RSI \
+  -d WLAN_VENDOR_SILABS \
+  -d WLAN_VENDOR_ST \
+  -d WLAN_VENDOR_TI \
+  -d WLAN_VENDOR_ZYDAS
 
 # Disable misc sound devices
 scripts/config -d SND_HDA_SCODEC_TAS2781_SPI
