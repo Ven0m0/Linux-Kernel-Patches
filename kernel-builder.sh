@@ -34,7 +34,7 @@ show_banner(){
 ║  Unified build system combining:                                  ║
 ║  • Curated Kernel Patches (6.12-6.18)                             ║
 ║  • Catgirl Edition Optimizations                                  ║
-║  • TKG Package Management                                         ║
+║  • TKG (Frogging-Family) Package Building                         ║
 ╚═══════════════════════════════════════════════════════════════════╝
 EOF
   printf '%b\n' "$DEF"
@@ -46,8 +46,7 @@ ${GRN}Usage:${DEF} ${0##*/} [command] [options]
 
 ${YLW}Commands:${DEF}
   ${CYN}catgirl${DEF}         Build optimized catgirl-edition kernel
-  ${CYN}t2linux${DEF}         Build kernel for Apple T2 hardware (MacBook/iMac)
-  ${CYN}tkg${DEF}             Launch TKG installer (Frogging-Family packages)
+  ${CYN}tkg${DEF}             Build TKG (Frogging-Family) packages
   ${CYN}patches${DEF}         Manage and apply kernel patches
   ${CYN}compile${DEF}         Run standard kernel compilation
   ${CYN}config${DEF}          Configure kernel build options
@@ -57,8 +56,8 @@ ${YLW}Commands:${DEF}
 
 ${YLW}Examples:${DEF}
   ${0##*/} catgirl              # Build catgirl-edition kernel with optimizations
-  ${0##*/} t2linux              # Build kernel with T2 hardware support and RT patches
-  ${0##*/} tkg                  # Launch TKG installer TUI
+  ${0##*/} tkg linux            # Build Linux-TKG kernel
+  ${0##*/} tkg nvidia           # Build Nvidia-TKG drivers
   ${0##*/} patches 6.17         # Show patches available for kernel 6.17
   ${0##*/} compile              # Standard kernel compilation
   ${0##*/} fetch                # Fetch latest patches
@@ -66,17 +65,15 @@ ${YLW}Examples:${DEF}
 ${YLW}Build Profiles:${DEF}
   ${CYN}Catgirl Edition${DEF}  - Aggressive optimizations, multiple schedulers
                        (BORE, EEVDF, BMQ, RT), LTO, -O3, performance tweaks
-  ${CYN}T2 Linux${DEF}         - Apple T2 hardware support (MacBook Pro, iMac Pro)
-                       with T2-specific patches, optional RT patches
   ${CYN}TKG Packages${DEF}     - Frogging-Family customizable builds
-                       (linux-tkg, nvidia-tkg, mesa-tkg, wine-tkg, proton-tkg)
+                       (linux-tkg, nvidia-all, mesa-git, wine-tkg, proton-tkg)
   ${CYN}Standard Patches${DEF} - Curated patches from CachyOS, XanMod, Clear Linux,
                        and other sources
 
 ${YLW}Documentation:${DEF}
   See ${CYN}docs/${DEF} directory for detailed guides
   See ${CYN}build/catgirl-edition/README.md${DEF} for catgirl optimizations
-  Run ${CYN}./scripts/tkg-installer help${DEF} for TKG installer usage
+  See ${CYN}https://github.com/Frogging-Family${DEF} for TKG documentation
 EOF
 }
 #──────────── Build Catgirl ────────────
@@ -100,96 +97,103 @@ build_catgirl(){
   info "Build complete!"
   printf '%s\n' "Install the package with: ${CYN}sudo pacman -U linux-catgirl-*.pkg.tar.zst${DEF}"
 }
-#──────────── Build T2 Linux ────────────
-build_t2linux(){
-  info "Building T2 Linux Kernel (Apple T2 Hardware Support)"
-  warn "This will build a kernel optimized for Apple T2 hardware"
-  printf '\n'
-  local nproc_count
-  nproc_count=$(nproc)
-  export MAKEFLAGS="-j${nproc_count}" INSTALL_PATH=/boot/linux
-  mkdir -p kernel && cd kernel
-  msg "Grabbing kernel and patches..."
-  rm -rf patches 2>/dev/null || :
-  git clone --depth=1 --filter=blob:none https://github.com/t2linux/linux-t2-patches patches
-  # Get latest kernel version from T2-Ubuntu-Kernel releases
-  local release_page pkgver _srcname
-  release_page=$(fetch "https://github.com/t2linux/T2-Ubuntu-Kernel/releases/latest/")
-  # Extract version: parse <title>Release vX.Y.Z-...</title>
-  if [[ $release_page =~ \<title\>Release\ v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
-    pkgver=${BASH_REMATCH[1]}
+#──────────── TKG Package Builder ──────
+# Detect distribution
+detect_distro(){
+  if [[ -f /etc/os-release ]]; then
+    . /etc/os-release
+    DISTRO_ID="${ID:-unknown}"
+    DISTRO_LIKE="${ID_LIKE:-}"
   else
-    die "Failed to parse kernel version from T2 releases"
+    DISTRO_ID="unknown"
+    DISTRO_LIKE=""
   fi
-  _srcname="linux-${pkgver}"
-  msg "Downloading kernel ${pkgver}..."
-  local major_ver=${pkgver%%.*}
-  fetch "https://kernel.org/pub/linux/kernel/v${major_ver}.x/${_srcname}.tar.xz" "${_srcname}.tar.xz"
-  tar xf "${_srcname}.tar.xz"
-  cd "$_srcname"
-  # Apply T2 patches
-  msg "Applying T2 patches..."
-  local patch
-  for patch in ../patches/*.patch; do
-    [[ -f $patch ]] && patch -Np1 < "$patch"
-  done
-  # Copy current kernel config
-  zcat /proc/config.gz > .config
-  local kernelver localver kernelmajminver
-  kernelver=$(make kernelversion)
-  localver=$(grep -oP 'CONFIG_LOCALVERSION="\K[^"]*' .config) || localver=""
-  kernelmajminver="${kernelver%.*}"
-  # Grab RT patchset
-  msg "Checking for real-time patches..."
-  local rt_index rtpatchfile rtver=""
-  rt_index=$(fetch "https://kernel.org/pub/linux/kernel/projects/rt/${kernelmajminver}/") || :
-  if [[ -n $rt_index ]]; then
-    # Extract patch filename (patch-X.Y.Z-rtN.patch.xz)
-    if [[ $rt_index =~ href=\"(patch-[^\"]+\.patch\.xz)\" ]]; then
-      rtpatchfile=${BASH_REMATCH[1]}
-      # Extract RT version (-rtN)
-      [[ $rtpatchfile =~ -rt([0-9]+) ]] && rtver="-rt${BASH_REMATCH[1]}"
-      info "Grabbing real-time patches..."
-      fetch "https://kernel.org/pub/linux/kernel/projects/rt/${kernelmajminver}/${rtpatchfile}" "../patches/${rtpatchfile}" || :
-      if [[ -f ../patches/${rtpatchfile} ]]; then
-        xz -d "../patches/${rtpatchfile}" || :
-        local rtpatch_uncompressed=${rtpatchfile%.xz}
-        msg "Applying real-time patches..."
-        patch -Np1 < "../patches/${rtpatch_uncompressed}" || :
-      fi
-    fi
+  # Check if Arch-based
+  if [[ "${DISTRO_ID,,}" =~ ^(arch|cachyos|manjaro|endeavouros)$ || "${DISTRO_LIKE,,}" == *"arch"* ]]; then
+    IS_ARCH_BASED=true
+  else
+    IS_ARCH_BASED=false
   fi
-  [[ -z $rtver ]] && warn "Real-time patches not available for this kernel version."
-  msg "Configuring kernel..."
-  # Disable debug info for smaller/faster builds
-  ./scripts/config --undefine GDB_SCRIPTS
-  ./scripts/config --undefine DEBUG_INFO
-  ./scripts/config --undefine DEBUG_INFO_SPLIT
-  ./scripts/config --undefine DEBUG_INFO_REDUCED
-  ./scripts/config --undefine DEBUG_INFO_COMPRESSED
-  ./scripts/config --set-val DEBUG_INFO_NONE y
-  ./scripts/config --set-val DEBUG_INFO_DWARF5 n
-  make olddefconfig
-  # Configure T2-specific modules
-  ./scripts/config --module CONFIG_BT_HCIBCM4377
-  ./scripts/config --module CONFIG_HID_APPLE_IBRIDGE
-  ./scripts/config --module CONFIG_HID_APPLE_TOUCHBAR
-  ./scripts/config --module CONFIG_HID_APPLE_MAGIC_BACKLIGHT
-  info "Building kernel (this may take a while)..."
-  make && make modules_install
-  info "Installing kernel..."
-  kernel-install add "${kernelver}${rtver}${localver}" ./vmlinux
-  info "T2 Linux kernel build complete!"
-  msg "Kernel version: ${kernelver}${rtver}${localver}"
+}
+# Generic TKG package installer
+install_tkg_package(){
+  local repo_url="$1" package_name="$2" build_cmd="$3" work_dir="${4:-}"
+  info "Building ${package_name} from Frogging-Family"
+  local tmp_dir="${HOME}/.cache/kernel-builder/tkg"
+  mkdir -p "$tmp_dir" && cd "$tmp_dir"
+  msg "Cloning repository..."
+  rm -rf "$(basename "$repo_url" .git)" 2>/dev/null || :
+  git clone --depth=1 "$repo_url" || die "Failed to clone $repo_url"
+  local repo_dir="$(basename "$repo_url" .git)"
+  cd "$repo_dir" || die "Failed to enter $repo_dir"
+  [[ -n $work_dir ]] && { cd "$work_dir" || die "Failed to enter $work_dir"; }
+  info "Building ${package_name}..."
+  eval "$build_cmd" || die "Build failed for $package_name"
+  info "${package_name} build complete!"
   cd "$SCRIPT_DIR"
 }
-#──────────── Launch TKG ────────────────
-launch_tkg(){
-  info "Launching TKG Installer"; local tkg_script="scripts/tkg-installer"
-  if [[ ! -x $tkg_script ]]; then
-    warn "TKG installer not found, installing..."; bash scripts/install-tkg.sh
-  fi
-  exec "$tkg_script" "$@"
+# TKG package builder
+build_tkg(){
+  local package="${1:-}"
+  detect_distro
+  case "${package,,}" in
+    linux|l)
+      msg "Building Linux-TKG kernel"
+      local build_cmd
+      if [[ $IS_ARCH_BASED == true ]]; then
+        info "Arch-based distribution detected, using makepkg"
+        build_cmd="makepkg -Csic"
+      else
+        info "Using generic install script"
+        build_cmd="chmod +x install.sh && ./install.sh install"
+      fi
+      install_tkg_package "https://github.com/Frogging-Family/linux-tkg.git" \
+        "Linux-TKG" "$build_cmd"
+      ;;
+    nvidia|n)
+      [[ $IS_ARCH_BASED != true ]] && die "Nvidia-TKG only supports Arch-based distributions"
+      msg "Building Nvidia-TKG drivers"
+      install_tkg_package "https://github.com/Frogging-Family/nvidia-all.git" \
+        "Nvidia-TKG" "makepkg -Csic"
+      ;;
+    mesa|m)
+      [[ $IS_ARCH_BASED != true ]] && die "Mesa-TKG only supports Arch-based distributions"
+      msg "Building Mesa-TKG"
+      install_tkg_package "https://github.com/Frogging-Family/mesa-git.git" \
+        "Mesa-TKG" "makepkg -Csic"
+      ;;
+    wine|w)
+      msg "Building Wine-TKG"
+      local build_cmd
+      if [[ $IS_ARCH_BASED == true ]]; then
+        build_cmd="makepkg -Csic"
+      else
+        build_cmd="chmod +x non-makepkg-build.sh && ./non-makepkg-build.sh"
+      fi
+      install_tkg_package "https://github.com/Frogging-Family/wine-tkg-git.git" \
+        "Wine-TKG" "$build_cmd" "wine-tkg-git"
+      ;;
+    proton|p)
+      msg "Building Proton-TKG"
+      install_tkg_package "https://github.com/Frogging-Family/wine-tkg-git.git" \
+        "Proton-TKG" "./proton-tkg.sh" "proton-tkg"
+      ;;
+    "")
+      warn "No TKG package specified"
+      printf '\n%s\n' "Available TKG packages:"
+      printf '  %blinux%b   - Custom Linux kernel (linux-tkg)\n' "$CYN" "$DEF"
+      [[ $IS_ARCH_BASED == true ]] && {
+        printf '  %bnvidia%b  - Nvidia drivers (nvidia-all)\n' "$CYN" "$DEF"
+        printf '  %bmesa%b    - Mesa graphics (mesa-git)\n' "$CYN" "$DEF"
+      }
+      printf '  %bwine%b    - Wine compatibility layer (wine-tkg)\n' "$CYN" "$DEF"
+      printf '  %bproton%b  - Proton for Steam (proton-tkg)\n' "$CYN" "$DEF"
+      printf '\n%s\n' "Usage: ${0##*/} tkg [linux|nvidia|mesa|wine|proton]"
+      ;;
+    *)
+      die "Unknown TKG package: $package"
+      ;;
+  esac
 }
 #──────────── Manage Patches ────────────
 manage_patches(){
@@ -235,13 +239,12 @@ main_menu(){
   cat <<EOF
 
   ${CYN}1${DEF}) Build Catgirl Edition Kernel (Optimized)
-  ${CYN}2${DEF}) Build T2 Linux Kernel (Apple T2 Hardware)
-  ${CYN}3${DEF}) Launch TKG Installer (TUI)
-  ${CYN}4${DEF}) Browse Patch Collection
-  ${CYN}5${DEF}) Standard Kernel Compilation
-  ${CYN}6${DEF}) Kernel Configuration
-  ${CYN}7${DEF}) Fetch Latest Patches
-  ${CYN}8${DEF}) Help & Documentation
+  ${CYN}2${DEF}) Build TKG Package (Frogging-Family)
+  ${CYN}3${DEF}) Browse Patch Collection
+  ${CYN}4${DEF}) Standard Kernel Compilation
+  ${CYN}5${DEF}) Kernel Configuration
+  ${CYN}6${DEF}) Fetch Latest Patches
+  ${CYN}7${DEF}) Help & Documentation
   ${CYN}q${DEF}) Quit
 
 EOF
@@ -249,13 +252,12 @@ EOF
   read -rp "Enter choice: " choice
   case $choice in
     1) build_catgirl ;;
-    2) build_t2linux ;;
-    3) launch_tkg ;;
-    4) list_patches ;;
-    5) bash scripts/compile.sh ;;
-    6) bash scripts/config.sh ;;
-    7) bash scripts/fetch.sh ;;
-    8) show_usage ;;
+    2) build_tkg ;;
+    3) list_patches ;;
+    4) bash scripts/compile.sh ;;
+    5) bash scripts/config.sh ;;
+    6) bash scripts/fetch.sh ;;
+    7) show_usage ;;
     q|Q) exit 0 ;;
     *) die "Invalid option" ;;
   esac
@@ -265,8 +267,7 @@ main(){
   cd "$SCRIPT_DIR"
   case ${1:-} in
     catgirl) build_catgirl ;;
-    t2linux) build_t2linux ;;
-    tkg) shift; launch_tkg "$@" ;;
+    tkg) shift; build_tkg "$@" ;;
     patches) shift; manage_patches "$@" ;;
     compile) bash scripts/compile.sh ;;
     config) bash scripts/config.sh ;;
