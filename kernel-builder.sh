@@ -7,17 +7,14 @@
 # - linux-catgirl-edition: Optimized kernel builds with PKGBUILD
 # - tkginstaller: TKG package management and TUI
 # =============================================================================
-set -e
-shopt -s nullglob globstar
-IFS=$'\n\t'
-export LC_ALL=C LANG=C
+set -e; shopt -s nullglob globstar
+IFS=$'\n\t' LC_ALL=C LANG=C
 VERSION="1.0.0"
 SCRIPT_DIR="$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 #──────────── Color & Style ────────────
-RED=$'\e[31m' GRN=$'\e[32m' YLW=$'\e[33m'
-BLU=$'\e[34m' MGN=$'\e[35m' CYN=$'\e[36m'
+RED=$'\e[31m' GRN=$'\e[32m' YLW=$'\e[33m' DEF=$'\e[0m'
+BLU=$'\e[34m' MGN=$'\e[35m' CYN=$'\e[36m' BLD=$'\e[1m'
 LBLU=$'\e[38;5;117m' PNK=$'\e[38;5;218m' BWHT=$'\e[97m'
-DEF=$'\e[0m' BLD=$'\e[1m'
 #──────────── Helpers ────────────────────
 has(){ command -v "$1" &>/dev/null; }
 die(){ printf '%b\n' "${RED}Error:${DEF} $*" >&2; exit 1; }
@@ -27,10 +24,7 @@ msg(){ printf '%b\n' "${CYN}$*${DEF}"; }
 # Common curl options for all downloads
 readonly CURL_OPTS=(-fLSs --proto '=https' --tlsv1.2 --compressed --connect-timeout 15 --retry 3 --retry-delay 2 --retry-max-time 60 --progress-bar)
 # Fetch URL to stdout or file (silent mode)
-fetch(){
-  local url=$1 out=${2:-}; [[ -n $out ]] && opts+=(-o "$out")
-  curl "${opts[@]}" "$url"
-}
+fetch(){ local url=$1 out=${2:-}; [[ -n $out ]] && opts+=(-o "$out"); curl "${opts[@]}" "$url"; }
 #──────────── Banner ────────────────────
 show_banner(){
   printf '%b' "$CYN"
@@ -191,11 +185,9 @@ build_t2linux(){
 }
 #──────────── Launch TKG ────────────────
 launch_tkg(){
-  info "Launching TKG Installer"
-  local tkg_script="scripts/tkg-installer"
+  info "Launching TKG Installer"; local tkg_script="scripts/tkg-installer"
   if [[ ! -x $tkg_script ]]; then
-    warn "TKG installer not found, installing..."
-    bash scripts/install-tkg.sh
+    warn "TKG installer not found, installing..."; bash scripts/install-tkg.sh
   fi
   exec "$tkg_script" "$@"
 }
@@ -203,15 +195,12 @@ launch_tkg(){
 manage_patches(){
   local version=${1:-}
   if [[ -z $version ]]; then
-    warn "Available kernel versions:"
-    local dir
+    warn "Available kernel versions:"; local dir
     for dir in 6.*/; do
       [[ -d $dir ]] && printf '  %b%s%b\n' "$CYN" "${dir%/}" "$DEF"
     done
-    printf '\n'
-    printf '%s\n' "Usage: ${0##*/} patches <version>"
-    printf '%s\n' "Example: ${0##*/} patches 6.17"
-    return
+    printf '\n%s\n' "Usage: ${0##*/} patches <version>"
+    printf '%s\n' "Example: ${0##*/} patches 6.17"; return
   fi
   [[ -d $version ]] || die "Version $version not found"
   info "Patches available for kernel ${version}:"
