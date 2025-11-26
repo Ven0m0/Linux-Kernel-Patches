@@ -22,7 +22,7 @@ info(){ printf '%b\n' "${GRN}$*${DEF}"; }
 warn(){ printf '%b\n' "${YLW}$*${DEF}"; }
 msg(){ printf '%b\n' "${CYN}$*${DEF}"; }
 # Common curl options for all downloads
-readonly CURL_OPTS=(-fLSs --proto '=https' --tlsv1.2 --compressed --connect-timeout 15 --retry 3 --retry-delay 2 --retry-max-time 60 --progress-bar)
+readonly CURL_OPTS=(-fLSs --http2 --proto '=https' --tlsv1.2 --compressed --connect-timeout 15 --retry 3 --retry-delay 2 --retry-max-time 60 --progress-bar)
 # Fetch URL to stdout or file (silent mode)
 fetch(){ local url=$1 out=${2:-}; [[ -n $out ]] && opts+=(-o "$out"); curl "${opts[@]}" "$url"; }
 #──────────── Banner ────────────────────
