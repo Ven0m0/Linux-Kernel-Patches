@@ -7,22 +7,40 @@
 # - linux-catgirl-edition: Optimized kernel builds with PKGBUILD
 # - tkginstaller: TKG package management and TUI
 # =============================================================================
-set -e
-LC_ALL=C LANG=C
+set -Eeuo pipefail
+shopt -s nullglob globstar extglob
+IFS=$'\n\t'
+export LC_ALL=C LANG=C
 VERSION="1.0.0"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Color definitions
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-MAGENTA='\033[0;35m'
-NC='\033[0m' # No Color
-# Banner
+SCRIPT_DIR="$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+#──────────── Color & Style ────────────
+RED=$'\e[31m' GRN=$'\e[32m' YLW=$'\e[33m'
+BLU=$'\e[34m' MGN=$'\e[35m' CYN=$'\e[36m'
+LBLU=$'\e[38;5;117m' PNK=$'\e[38;5;218m' BWHT=$'\e[97m'
+DEF=$'\e[0m' BLD=$'\e[1m'
+#──────────── Helpers ────────────────────
+has(){ command -v "$1" &>/dev/null; }
+die(){ printf '%b\n' "${RED}Error:${DEF} $*" >&2; exit 1; }
+info(){ printf '%b\n' "${GRN}$*${DEF}"; }
+warn(){ printf '%b\n' "${YLW}$*${DEF}"; }
+msg(){ printf '%b\n' "${CYN}$*${DEF}"; }
+# Fetch URL to stdout or file
+fetch(){
+  local url=$1 out=${2:-}
+  if [[ -n $out ]]; then
+    curl -fsSL --proto '=https' --tlsv1.2 -o "$out" "$url"
+  else
+    curl -fsSL --proto '=https' --tlsv1.2 "$url"
+  fi
+}
+# Download with progress
+fetch_progress(){
+  local url=$1 out=$2
+  curl -fL --proto '=https' --tlsv1.2 -# -o "$out" "$url"
+}
+#──────────── Banner ────────────────────
 show_banner(){
-  echo -e "${CYAN}"
+  printf '%b' "$CYN"
   cat <<'EOF'
 ╔═══════════════════════════════════════════════════════════════════╗
 ║                  Linux Kernel Builder Suite                       ║
@@ -32,113 +50,130 @@ show_banner(){
 ║  • TKG Package Management                                         ║
 ╚═══════════════════════════════════════════════════════════════════╝
 EOF
-  echo -e "${NC}"
+  printf '%b\n' "$DEF"
 }
-
-# Usage information
+#──────────── Usage ────────────────────
 show_usage(){
-    cat <<EOF
-${GREEN}Usage:${NC} $0 [command] [options]
+  cat <<EOF
+${GRN}Usage:${DEF} ${0##*/} [command] [options]
 
-${YELLOW}Commands:${NC}
-  ${CYAN}catgirl${NC}         Build optimized catgirl-edition kernel
-  ${CYAN}t2linux${NC}         Build kernel for Apple T2 hardware (MacBook/iMac)
-  ${CYAN}tkg${NC}             Launch TKG installer (Frogging-Family packages)
-  ${CYAN}patches${NC}         Manage and apply kernel patches
-  ${CYAN}compile${NC}         Run standard kernel compilation
-  ${CYAN}config${NC}          Configure kernel build options
-  ${CYAN}fetch${NC}           Fetch latest patches from sources
-  ${CYAN}list${NC}            List available patches by version
-  ${CYAN}help${NC}            Show this help message
+${YLW}Commands:${DEF}
+  ${CYN}catgirl${DEF}         Build optimized catgirl-edition kernel
+  ${CYN}t2linux${DEF}         Build kernel for Apple T2 hardware (MacBook/iMac)
+  ${CYN}tkg${DEF}             Launch TKG installer (Frogging-Family packages)
+  ${CYN}patches${DEF}         Manage and apply kernel patches
+  ${CYN}compile${DEF}         Run standard kernel compilation
+  ${CYN}config${DEF}          Configure kernel build options
+  ${CYN}fetch${DEF}           Fetch latest patches from sources
+  ${CYN}list${DEF}            List available patches by version
+  ${CYN}help${DEF}            Show this help message
 
-${YELLOW}Examples:${NC}
-  $0 catgirl              # Build catgirl-edition kernel with optimizations
-  $0 t2linux              # Build kernel with T2 hardware support and RT patches
-  $0 tkg                  # Launch TKG installer TUI
-  $0 patches 6.17         # Show patches available for kernel 6.17
-  $0 compile              # Standard kernel compilation
-  $0 fetch                # Fetch latest patches
+${YLW}Examples:${DEF}
+  ${0##*/} catgirl              # Build catgirl-edition kernel with optimizations
+  ${0##*/} t2linux              # Build kernel with T2 hardware support and RT patches
+  ${0##*/} tkg                  # Launch TKG installer TUI
+  ${0##*/} patches 6.17         # Show patches available for kernel 6.17
+  ${0##*/} compile              # Standard kernel compilation
+  ${0##*/} fetch                # Fetch latest patches
 
-${YELLOW}Build Profiles:${NC}
-  ${CYAN}Catgirl Edition${NC}  - Aggressive optimizations, multiple schedulers
+${YLW}Build Profiles:${DEF}
+  ${CYN}Catgirl Edition${DEF}  - Aggressive optimizations, multiple schedulers
                        (BORE, EEVDF, BMQ, RT), LTO, -O3, performance tweaks
-  ${CYAN}T2 Linux${NC}         - Apple T2 hardware support (MacBook Pro, iMac Pro)
+  ${CYN}T2 Linux${DEF}         - Apple T2 hardware support (MacBook Pro, iMac Pro)
                        with T2-specific patches, optional RT patches
-  ${CYAN}TKG Packages${NC}     - Frogging-Family customizable builds
+  ${CYN}TKG Packages${DEF}     - Frogging-Family customizable builds
                        (linux-tkg, nvidia-tkg, mesa-tkg, wine-tkg, proton-tkg)
-  ${CYAN}Standard Patches${NC} - Curated patches from CachyOS, XanMod, Clear Linux,
+  ${CYN}Standard Patches${DEF} - Curated patches from CachyOS, XanMod, Clear Linux,
                        and other sources
 
-${YELLOW}Documentation:${NC}
-  See ${CYAN}docs/${NC} directory for detailed guides
-  See ${CYAN}build/catgirl-edition/README.md${NC} for catgirl optimizations
-  Run ${CYAN}./scripts/tkg-installer help${NC} for TKG installer usage
+${YLW}Documentation:${DEF}
+  See ${CYN}docs/${DEF} directory for detailed guides
+  See ${CYN}build/catgirl-edition/README.md${DEF} for catgirl optimizations
+  Run ${CYN}./scripts/tkg-installer help${DEF} for TKG installer usage
 EOF
 }
-
-# Build catgirl-edition kernel
+#──────────── Build Catgirl ────────────
 build_catgirl(){
-  echo -e "${GREEN}Building Catgirl Edition Kernel${NC}"
-  echo -e "${YELLOW}This will build an optimized kernel using the catgirl-edition PKGBUILD${NC}\n"
-  if [[ ! -f "build/catgirl-edition/PKGBUILD" ]]; then
-    echo -e "${RED}Error: PKGBUILD not found in build/catgirl-edition/${NC}"; exit 1
-  fi
+  info "Building Catgirl Edition Kernel"
+  warn "This will build an optimized kernel using the catgirl-edition PKGBUILD"
+  printf '\n'
+  local pkgbuild="build/catgirl-edition/PKGBUILD"
+  [[ -f $pkgbuild ]] || die "PKGBUILD not found in build/catgirl-edition/"
   cd build/catgirl-edition
-  echo -e "${CYAN}Please review the PKGBUILD and customize as needed:${NC}"
-  echo -e "  - CPU scheduler (BORE/EEVDF/BMQ/RT)"
-  echo -e "  - Optimization level (-O3, LTO)"
-  echo -e "  - Patchsets (CachyOS, Clear Linux, XanMod)"
-  echo ""
-  read -p "Do you want to edit the PKGBUILD before building? (y/N): " edit_choice
-  [[ "$edit_choice" =~ ^[Yy]$ ]] && ${EDITOR:-nano} PKGBUILD
-  echo -e "${GREEN}Starting build...${NC}"
+  msg "Please review the PKGBUILD and customize as needed:"
+  printf '%s\n' "  - CPU scheduler (BORE/EEVDF/BMQ/RT)"
+  printf '%s\n' "  - Optimization level (-O3, LTO)"
+  printf '%s\n' "  - Patchsets (CachyOS, Clear Linux, XanMod)"
+  printf '\n'
+  local edit_choice
+  read -rp "Do you want to edit the PKGBUILD before building? (y/N): " edit_choice
+  [[ ${edit_choice,,} == y ]] && "${EDITOR:-nano}" PKGBUILD
+  info "Starting build..."
   makepkg -scf --cleanbuild --skipchecksums
-  echo -e "${GREEN}Build complete!${NC}"
-  echo -e "Install the package with: ${CYAN}sudo pacman -U linux-catgirl-*.pkg.tar.zst${NC}"
+  info "Build complete!"
+  printf '%s\n' "Install the package with: ${CYN}sudo pacman -U linux-catgirl-*.pkg.tar.zst${DEF}"
 }
-
-# Build T2 Linux kernel (for Apple T2 hardware)
+#──────────── Build T2 Linux ────────────
 build_t2linux(){
-  echo -e "${GREEN}Building T2 Linux Kernel (Apple T2 Hardware Support)${NC}"
-  echo -e "${YELLOW}This will build a kernel optimized for Apple T2 hardware${NC}"
-  echo ""
-  # Set up environment
-  MAKEFLAGS=-j$(nproc)
-  export MAKEFLAGS INSTALL_PATH=/boot/linux
+  info "Building T2 Linux Kernel (Apple T2 Hardware Support)"
+  warn "This will build a kernel optimized for Apple T2 hardware"
+  printf '\n'
+  local nproc_count
+  nproc_count=$(nproc)
+  export MAKEFLAGS="-j${nproc_count}" INSTALL_PATH=/boot/linux
   mkdir -p kernel && cd kernel
-  echo -e "${CYAN}Grabbing kernel and patches...${NC}"
-  rm -rf patches 2> /dev/null || :
+  msg "Grabbing kernel and patches..."
+  rm -rf patches 2>/dev/null || :
   git clone --depth=1 --filter=blob:none https://github.com/t2linux/linux-t2-patches patches
-
   # Get latest kernel version from T2-Ubuntu-Kernel releases
-  pkgver=$(curl -sL https://github.com/t2linux/T2-Ubuntu-Kernel/releases/latest/ | grep "<title>Release" | awk -F " " '{print $2}' | cut -d "v" -f 2 | cut -d "-" -f 1)
-  _srcname=linux-${pkgver}
-  echo -e "${CYAN}Downloading kernel ${pkgver}...${NC}"
-  wget https://kernel.org/pub/linux/kernel/v"${pkgver//.*/}".x/"$_srcname".tar.xz
-  tar xvf "$_srcname".tar.xz
+  local release_page pkgver _srcname
+  release_page=$(fetch "https://github.com/t2linux/T2-Ubuntu-Kernel/releases/latest/")
+  # Extract version: parse <title>Release vX.Y.Z-...</title>
+  if [[ $release_page =~ \<title\>Release\ v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+    pkgver=${BASH_REMATCH[1]}
+  else
+    die "Failed to parse kernel version from T2 releases"
+  fi
+  _srcname="linux-${pkgver}"
+  msg "Downloading kernel ${pkgver}..."
+  local major_ver=${pkgver%%.*}
+  fetch_progress "https://kernel.org/pub/linux/kernel/v${major_ver}.x/${_srcname}.tar.xz" "${_srcname}.tar.xz"
+  tar xf "${_srcname}.tar.xz"
   cd "$_srcname"
   # Apply T2 patches
-  echo -e "${CYAN}Applying T2 patches...${NC}"
-  for patch in ../patches/*.patch; do patch -Np1 < "$patch"; done
+  msg "Applying T2 patches..."
+  local patch
+  for patch in ../patches/*.patch; do
+    [[ -f $patch ]] && patch -Np1 < "$patch"
+  done
   # Copy current kernel config
   zcat /proc/config.gz > .config
+  local kernelver localver kernelmajminver
   kernelver=$(make kernelversion)
-  localver=$(grep 'CONFIG_LOCALVERSION=' .config | awk -F '"' '{print $2}')
-  kernelmajminver=$(echo "$kernelver" | awk -F "." '{print $1 "." $2}')
+  localver=$(grep -oP 'CONFIG_LOCALVERSION="\K[^"]*' .config) || localver=""
+  kernelmajminver="${kernelver%.*}"
   # Grab RT patchset
-  echo -e "${CYAN}Checking for real-time patches...${NC}"
-  rtpatchfile=$(curl -s --location "https://kernel.org/pub/linux/kernel/projects/rt/$kernelmajminver/" | grep -ioE '<a href="(patch-.+)">' | awk -F '"' '{print $2}' | tail -n 1)
-  rtver=$(echo "$rtpatchfile" | awk -F "-" '{print $3}' | awk -F "\\\." '{print "-" $1}')
-  if [[ -n $rtpatchfile ]]; then
-      echo -e "${GREEN}Grabbing real-time patches...${NC}"
-      wget -O "../patches/$rtpatchfile" "https://kernel.org/pub/linux/kernel/projects/rt/$kernelmajminver/$rtpatchfile" || :
-      xz -d "../patches/$rtpatchfile" || :
-      echo -e "${CYAN}Applying real-time patches...${NC}"
-      patch -Np1 < "../patches/$(echo "$rtpatchfile" | head -c -4)" || :
-  else
-    echo -e "${YELLOW}Real-time patches not available for this kernel version.${NC}"
+  msg "Checking for real-time patches..."
+  local rt_index rtpatchfile rtver=""
+  rt_index=$(fetch "https://kernel.org/pub/linux/kernel/projects/rt/${kernelmajminver}/") || :
+  if [[ -n $rt_index ]]; then
+    # Extract patch filename (patch-X.Y.Z-rtN.patch.xz)
+    if [[ $rt_index =~ href=\"(patch-[^\"]+\.patch\.xz)\" ]]; then
+      rtpatchfile=${BASH_REMATCH[1]}
+      # Extract RT version (-rtN)
+      [[ $rtpatchfile =~ -rt([0-9]+) ]] && rtver="-rt${BASH_REMATCH[1]}"
+      info "Grabbing real-time patches..."
+      fetch_progress "https://kernel.org/pub/linux/kernel/projects/rt/${kernelmajminver}/${rtpatchfile}" "../patches/${rtpatchfile}" || :
+      if [[ -f ../patches/${rtpatchfile} ]]; then
+        xz -d "../patches/${rtpatchfile}" || :
+        local rtpatch_uncompressed=${rtpatchfile%.xz}
+        msg "Applying real-time patches..."
+        patch -Np1 < "../patches/${rtpatch_uncompressed}" || :
+      fi
+    fi
   fi
-  echo -e "${CYAN}Configuring kernel...${NC}"
+  [[ -z $rtver ]] && warn "Real-time patches not available for this kernel version."
+  msg "Configuring kernel..."
   # Disable debug info for smaller/faster builds
   ./scripts/config --undefine GDB_SCRIPTS
   ./scripts/config --undefine DEBUG_INFO
@@ -149,114 +184,115 @@ build_t2linux(){
   ./scripts/config --set-val DEBUG_INFO_DWARF5 n
   make olddefconfig
   # Configure T2-specific modules
-  scripts/config --module CONFIG_BT_HCIBCM4377
-  scripts/config --module CONFIG_HID_APPLE_IBRIDGE
-  scripts/config --module CONFIG_HID_APPLE_TOUCHBAR
-  scripts/config --module CONFIG_HID_APPLE_MAGIC_BACKLIGHT
-  echo -e "${GREEN}Building kernel (this may take a while)...${NC}"
+  ./scripts/config --module CONFIG_BT_HCIBCM4377
+  ./scripts/config --module CONFIG_HID_APPLE_IBRIDGE
+  ./scripts/config --module CONFIG_HID_APPLE_TOUCHBAR
+  ./scripts/config --module CONFIG_HID_APPLE_MAGIC_BACKLIGHT
+  info "Building kernel (this may take a while)..."
   make && make modules_install
-  echo -e "${GREEN}Installing kernel...${NC}"
-  kernel-install add "$kernelver$rtver$localver" ./vmlinux
-  echo -e "${GREEN}T2 Linux kernel build complete!${NC}"
-  echo -e "${CYAN}Kernel version: $kernelver$rtver$localver${NC}"
+  info "Installing kernel..."
+  kernel-install add "${kernelver}${rtver}${localver}" ./vmlinux
+  info "T2 Linux kernel build complete!"
+  msg "Kernel version: ${kernelver}${rtver}${localver}"
   cd "$SCRIPT_DIR"
 }
-
-# Launch TKG installer
+#──────────── Launch TKG ────────────────
 launch_tkg(){
-  echo -e "${GREEN}Launching TKG Installer${NC}"
-  if [[ ! -x "scripts/tkg-installer" ]]; then
-      echo -e "${RED}Error: TKG installer not found${NC}"
-      echo -e "${YELLOW}Installing TKG installer...${NC}"
-      bash scripts/install-tkg.sh
+  info "Launching TKG Installer"
+  local tkg_script="scripts/tkg-installer"
+  if [[ ! -x $tkg_script ]]; then
+    warn "TKG installer not found, installing..."
+    bash scripts/install-tkg.sh
   fi
-  exec scripts/tkg-installer "$@"
+  exec "$tkg_script" "$@"
 }
-
-# Manage patches
+#──────────── Manage Patches ────────────
 manage_patches(){
-  local version="$1"
-  if [[ -z "$version" ]]; then
-      echo -e "${YELLOW}Available kernel versions:${NC}"
-      for dir in 6.*; do
-        [[ -d "$dir" ]] && echo -e "  ${CYAN}$dir${NC}"
-      done
-      echo ""
-      echo -e "Usage: $0 patches <version>"
-      echo -e "Example: $0 patches 6.17"; return
-    fi
-  if [[ ! -d "$version" ]]; then
-      echo -e "${RED}Error: Version $version not found${NC}"; return 1
+  local version=${1:-}
+  if [[ -z $version ]]; then
+    warn "Available kernel versions:"
+    local dir
+    for dir in 6.*/; do
+      [[ -d $dir ]] && printf '  %b%s%b\n' "$CYN" "${dir%/}" "$DEF"
+    done
+    printf '\n'
+    printf '%s\n' "Usage: ${0##*/} patches <version>"
+    printf '%s\n' "Example: ${0##*/} patches 6.17"
+    return
   fi
-
-    echo -e "${GREEN}Patches available for kernel $version:${NC}"
-    echo ""
-
-    find "$version" -type f -name "*.patch" | while read -r patch; do
-        echo -e "  ${CYAN}$patch${NC}"
-        local size=$(du -h "$patch" | cut -f1)
-        echo -e "    Size: $size"
-        echo ""
-    done
+  [[ -d $version ]] || die "Version $version not found"
+  info "Patches available for kernel ${version}:"
+  printf '\n'
+  local patch size
+  while IFS= read -r patch; do
+    printf '  %b%s%b\n' "$CYN" "$patch" "$DEF"
+    size=$(du -h "$patch" | cut -f1)
+    printf '    Size: %s\n\n' "$size"
+  done < <(find "$version" -type f -name "*.patch")
 }
-
-# List all patches
+#──────────── List Patches ────────────
 list_patches(){
-    echo -e "${GREEN}Kernel Patch Collection${NC}\n"
-    for version in 6.*; do
-        if [[ -d "$version" ]]; then
-            echo -e "${CYAN}=== $version ===${NC}"
-            local count=$(find "$version" -type f -name "*.patch" 2>/dev/null | wc -l)
-            echo -e "  Patches: $count"
-            [[ -d "$version/catgirl-edition" ]] && echo -e "  ${MAGENTA}✓ Catgirl Edition patches available${NC}\n"
-        fi
-    done
+  info "Kernel Patch Collection"
+  printf '\n'
+  local version count
+  for version in 6.*/; do
+    [[ -d $version ]] || continue
+    version=${version%/}
+    printf '%b=== %s ===%b\n' "$CYN" "$version" "$DEF"
+    count=$(find "$version" -type f -name "*.patch" 2>/dev/null | wc -l)
+    printf '  Patches: %d\n' "$count"
+    [[ -d "${version}/catgirl-edition" ]] && \
+      printf '  %b✓ Catgirl Edition patches available%b\n' "$MGN" "$DEF"
+    printf '\n'
+  done
 }
-
-# Main menu
+#──────────── Main Menu ────────────────
 main_menu(){
-    show_banner
-    echo -e "${YELLOW}Select an option:${NC}"
-    echo -e "\n  ${CYAN}1${NC}) Build Catgirl Edition Kernel (Optimized)"
-    echo -e "  ${CYAN}2${NC}) Build T2 Linux Kernel (Apple T2 Hardware)"
-    echo -e "  ${CYAN}3${NC}) Launch TKG Installer (TUI)"
-    echo -e "  ${CYAN}4${NC}) Browse Patch Collection"
-    echo -e "  ${CYAN}5${NC}) Standard Kernel Compilation"
-    echo -e "  ${CYAN}6${NC}) Kernel Configuration"
-    echo -e "  ${CYAN}7${NC}) Fetch Latest Patches"
-    echo -e "  ${CYAN}8${NC}) Help & Documentation"
-    echo -e "  ${CYAN}q${NC}) Quit"
-    echo ""
-    read -p "Enter choice: " choice
-    case "$choice" in
-        1) build_catgirl ;;
-        2) build_t2linux ;;
-        3) launch_tkg ;;
-        4) list_patches ;;
-        5) bash scripts/compile.sh ;;
-        6) bash scripts/config.sh ;;
-        7) bash scripts/fetch.sh ;;
-        8) show_usage ;;
-        q|Q) exit 0 ;;
-        *) echo -e "${RED}Invalid option${NC}" ;;
-    esac
+  show_banner
+  warn "Select an option:"
+  cat <<EOF
+
+  ${CYN}1${DEF}) Build Catgirl Edition Kernel (Optimized)
+  ${CYN}2${DEF}) Build T2 Linux Kernel (Apple T2 Hardware)
+  ${CYN}3${DEF}) Launch TKG Installer (TUI)
+  ${CYN}4${DEF}) Browse Patch Collection
+  ${CYN}5${DEF}) Standard Kernel Compilation
+  ${CYN}6${DEF}) Kernel Configuration
+  ${CYN}7${DEF}) Fetch Latest Patches
+  ${CYN}8${DEF}) Help & Documentation
+  ${CYN}q${DEF}) Quit
+
+EOF
+  local choice
+  read -rp "Enter choice: " choice
+  case $choice in
+    1) build_catgirl ;;
+    2) build_t2linux ;;
+    3) launch_tkg ;;
+    4) list_patches ;;
+    5) bash scripts/compile.sh ;;
+    6) bash scripts/config.sh ;;
+    7) bash scripts/fetch.sh ;;
+    8) show_usage ;;
+    q|Q) exit 0 ;;
+    *) die "Invalid option" ;;
+  esac
 }
-# Main entry point
+#──────────── Main Entry ────────────────
 main(){
-    cd "$SCRIPT_DIR"
-    case "${1:-}" in
-        catgirl) build_catgirl ;;
-        t2linux) build_t2linux ;;
-        tkg) shift; launch_tkg "$@" ;;
-        patches) shift; manage_patches "$@" ;;
-        compile) bash scripts/compile.sh ;;
-        config) bash scripts/config.sh ;;
-        fetch) bash scripts/fetch.sh ;;
-        list) list_patches ;;
-        help|--help|-h) show_banner; show_usage ;;
-        "") main_menu ;;
-        *) echo -e "${RED}Unknown command: $1${NC}\n"; show_usage; exit 1 ;;
-    esac
+  cd "$SCRIPT_DIR"
+  case ${1:-} in
+    catgirl) build_catgirl ;;
+    t2linux) build_t2linux ;;
+    tkg) shift; launch_tkg "$@" ;;
+    patches) shift; manage_patches "$@" ;;
+    compile) bash scripts/compile.sh ;;
+    config) bash scripts/config.sh ;;
+    fetch) bash scripts/fetch.sh ;;
+    list) list_patches ;;
+    help|--help|-h) show_banner; show_usage ;;
+    "") main_menu ;;
+    *) die "Unknown command: $1"; show_usage ;;
+  esac
 }
-# Run main function
 main "$@"
