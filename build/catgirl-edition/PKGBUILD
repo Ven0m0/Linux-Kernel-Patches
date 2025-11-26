@@ -13,12 +13,84 @@
 
 # when you are done with configuration, execute `makepkg -scf --cleanbuild --skipchecksums` to begin the build.
 
+# =============================================================================
+# Dynamic Kernel Version Configuration
+# =============================================================================
+# The kernel version is now dynamically fetched from CachyOS by default.
+# It will automatically use the latest mainline CachyOS kernel version.
+#
+# To override with a specific version, set environment variables before building:
+#   _major=6.17 _minor=.8 makepkg -scf --cleanbuild --skipchecksums
+#
+# Or export them:
+#   export _major=6.17
+#   export _minor=.8
+#   makepkg -scf --cleanbuild --skipchecksums
+# =============================================================================
+
+# Helper functions to fetch latest kernel version
+_get_latest_cachyos_major() {
+    # Fetch all major.minor versions from CachyOS kernel-patches repo
+    local versions
+    versions=$(curl -fsSL "https://api.github.com/repos/CachyOS/kernel-patches/contents/" 2>/dev/null | \
+        grep -oP '"name":\s*"\K[0-9]+\.[0-9]+(?=")' | sort -V)
+
+    if [ -z "$versions" ]; then
+        echo "6.17"  # Fallback to known stable version
+        return
+    fi
+
+    # Try to find the latest version with a stable kernel release
+    local stable_releases
+    stable_releases=$(curl -fsSL "https://www.kernel.org/releases.json" 2>/dev/null | \
+        grep -oP "\"version\":\s*\"\K[0-9]+\.[0-9]+\.[0-9]+" || echo "")
+
+    # Iterate from newest to oldest CachyOS version
+    while IFS= read -r ver; do
+        # Check if this version has a stable release on kernel.org
+        if echo "$stable_releases" | grep -q "^${ver}\."; then
+            echo "$ver"
+            return
+        fi
+    done <<< "$(echo "$versions" | tac)"
+
+    # If no stable release found, return the latest CachyOS version anyway
+    echo "$versions" | tail -1
+}
+
+_get_latest_patch_version() {
+    # Fetch latest patch version for given major version from kernel.org
+    local major="$1"
+    local latest
+    # Extract the full version (e.g., "6.17.9" from "6.17")
+    latest=$(curl -fsSL "https://www.kernel.org/releases.json" 2>/dev/null | \
+        grep -oP "\"version\":\s*\"\K${major}\.[0-9]+" | head -1)
+
+    if [ -n "$latest" ]; then
+        # Extract just the patch number (e.g., "9" from "6.17.9")
+        echo ".${latest##*.}"
+    else
+        # Fallback to .0 if no stable release found
+        echo ".0"
+    fi
+}
+
 # if you change this, you will want to execute `rm *.patch` to ensure the kernel is patched properly
 #
 # if you are updating the kernel, consider running `git stash && git fetch && git pull && git stash pop` instead
 # of updating these values
-_major=6.17
-_minor=.8
+#
+# Dynamic kernel version - fetches latest CachyOS mainline version by default
+# Can be overridden by setting _major and _minor environment variables
+if [ -z "${_major}" ]; then
+    _major=$(_get_latest_cachyos_major)
+    echo "Auto-detected CachyOS kernel major version: $_major"
+fi
+
+if [ -z "${_minor}" ]; then
+    _minor=$(_get_latest_patch_version "$_major")
+    echo "Auto-detected kernel patch version: $_minor"
+fi
 
 # select custom patchset(s)
 #
