@@ -1,0 +1,8 @@
+https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.18/all/0001-cachyos-base-all.patch
+https://github.com/CachyOS/kernel-patches/blob/master/6.18/misc/0001-clang-polly.patch
+https://github.com/CachyOS/kernel-patches/blob/master/6.18/misc/dkms-clang.patch
+https://github.com/CachyOS/kernel-patches/blob/master/6.18/0007-crypto.patch
+https://github.com/CachyOS/kernel-patches/blob/master/6.18/0008-fixes.patch
+https://github.com/CachyOS/kernel-patches/blob/master/6.18/0009-intel-pstate.patch
+https://github.com/CachyOS/kernel-patches/blob/master/6.18/0010-sched-ext.patch
+https://github.com/CachyOS/kernel-patches/blob/master/6.18/sched/0001-bore-cachy.patch
