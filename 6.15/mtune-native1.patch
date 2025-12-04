@@ -1,6 +1,0 @@
---- a/arch/x86/Makefile
-+++ b/arch/x86/Makefile
-@@ -176,2 +176,2 @@
- ifdef CONFIG_X86_NATIVE_CPU
--        KBUILD_CFLAGS += -march=native
-+        KBUILD_CFLAGS += -march=native -mtune=native

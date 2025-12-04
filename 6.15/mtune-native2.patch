@@ -1,6 +1,0 @@
---- a/arch/x86/Kconfig.cpu
-+++ b/arch/x86/Kconfig.cpu
-@@ -247,2 +247,2 @@
- config CC_HAS_MARCH_NATIVE
--	def_bool $(cc-option, -march=native)
-+	def_bool $(cc-option, -march=native -mtune=native)
