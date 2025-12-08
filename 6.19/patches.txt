@@ -1,7 +1,3 @@
 https://github.com/babiulep/my-kernel-patches/blob/main/NVIDIA/6.19/state.patch
 https://github.com/babiulep/my-kernel-patches/blob/main/NVIDIA/6.19/dma.patch
 https://github.com/babiulep/my-kernel-patches/blob/main/NVIDIA/6.19/drm_error.patch
-
-https://github.com/GloriousEggroll/Linux-Pollrate-Patch
-https://github.com/openSUSE/kernel-source/tree/master/patches.rpmify
-https://github.com/openSUSE/kernel-source/tree/master/patches.suse
