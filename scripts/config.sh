@@ -4,9 +4,18 @@
 set -euo pipefail
 
 # Validate kernel source directory
-[[ -n "${1:-}" ]] || { echo "Error: Kernel source directory not specified" >&2; exit 1; }
-cd "$1" || { echo "Error: Directory not found: $1" >&2; exit 1; }
-[[ -f "scripts/config" ]] || { echo "Error: Not a valid kernel source tree" >&2; exit 1; }
+[[ -n ${1:-} ]] || {
+  echo "Error: Kernel source directory not specified" >&2
+  exit 1
+}
+cd "$1" || {
+  echo "Error: Directory not found: $1" >&2
+  exit 1
+}
+[[ -f "scripts/config" ]] || {
+  echo "Error: Not a valid kernel source tree" >&2
+  exit 1
+}
 
 # commands:
 #     --enable   | -e option   Enable option
@@ -15,9 +24,6 @@ cd "$1" || { echo "Error: Directory not found: $1" >&2; exit 1; }
 #     --set-str option string  Set option to "string"
 #     --set-val option value   Set option to value
 #     --undefine | -u option   Undefine option
-
-
-
 
 scripts/config -e LD_DEAD_CODE_DATA_ELIMINATION
 
@@ -48,8 +54,8 @@ scripts/config -e ACPI_TAD -e ACPI_VIDEO -e ACPI_WMI -e INPUT_SPARSEKMAP
 
 ### Enable input modules. (default -m)
 scripts/config -e SERIO -e SERIO_I8042 -e SERIO_LIBPS2 -e UHID -e USB_HID
-scripts/config -d HID_APPLE 
-scripts/config -e HID_GENERIC 
+scripts/config -d HID_APPLE
+scripts/config -e HID_GENERIC
 #scripts/config -e HID_LOGITECH -e HID_LOGITECH_DJ -e HID_LOGITECH_HIDPP
 scripts/config -e HID_MICROSOFT -e HID_SAMSUNG -e HID_VIVALDI
 scripts/config -e SERIO_GPIO_PS2 -e SERIO_SERPORT
@@ -405,122 +411,122 @@ scripts/config -d SND_VIA82XX_MODEM
 scripts/config -d SND_VIRTUOSO
 
 ### Apply various Clear Linux defaults
-if [[ $(uname -m) = *"x86"* ]]; then
-    ### Default to IOMMU passthrough domain type.
-    scripts/config -d IOMMU_DEFAULT_DMA_LAZY -e IOMMU_DEFAULT_PASSTHROUGH
+if [[ $(uname -m) == *"x86"* ]]; then
+  ### Default to IOMMU passthrough domain type.
+  scripts/config -d IOMMU_DEFAULT_DMA_LAZY -e IOMMU_DEFAULT_PASSTHROUGH
 
-    ### Disable support for memory balloon compaction.
-    #scripts/config -d BALLOON_COMPACTION
+  ### Disable support for memory balloon compaction.
+  #scripts/config -d BALLOON_COMPACTION
 
-    ### Disable the Contiguous Memory Allocator.
-    #scripts/config -d CMA
+  ### Disable the Contiguous Memory Allocator.
+  #scripts/config -d CMA
 
-    ### Disable DAMON: Data Access Monitoring Framework.
-    scripts/config -d DAMON
+  ### Disable DAMON: Data Access Monitoring Framework.
+  scripts/config -d DAMON
 
-    ### Disable HWPoison pages injector.
-    scripts/config -d HWPOISON_INJECT
+  ### Disable HWPoison pages injector.
+  scripts/config -d HWPOISON_INJECT
 
-    ### Disable track memory changes and idle page tracking.
-    #scripts/config -d MEM_SOFT_DIRTY -d IDLE_PAGE_TRACKING
+  ### Disable track memory changes and idle page tracking.
+  #scripts/config -d MEM_SOFT_DIRTY -d IDLE_PAGE_TRACKING
 
-    ### Disable paravirtual steal time accounting.
-    scripts/config -d PARAVIRT_TIME_ACCOUNTING
+  ### Disable paravirtual steal time accounting.
+  scripts/config -d PARAVIRT_TIME_ACCOUNTING
 
-    ### Disable pvpanic device support.
-    scripts/config -d PVPANIC
+  ### Disable pvpanic device support.
+  scripts/config -d PVPANIC
 
-    ### Require boot param to enable pressure stall information tracking.
-    scripts/config -e PSI_DEFAULT_DISABLED
+  ### Require boot param to enable pressure stall information tracking.
+  scripts/config -e PSI_DEFAULT_DISABLED
 
-    ### Disable khugepaged to put read-only file-backed pages in THP.
-    scripts/config -d READ_ONLY_THP_FOR_FS
+  ### Disable khugepaged to put read-only file-backed pages in THP.
+  scripts/config -d READ_ONLY_THP_FOR_FS
 
-    ### Disable Integrity Policy Enforcement (IPE).
-    scripts/config -d SECURITY_IPE
+  ### Disable Integrity Policy Enforcement (IPE).
+  scripts/config -d SECURITY_IPE
 
-    ### Disable support for userspace-controlled virtual timers.
-    scripts/config -d SND_UTIMER
+  ### Disable support for userspace-controlled virtual timers.
+  scripts/config -d SND_UTIMER
 
-    ### Disable the general notification queue.
-    scripts/config -d WATCH_QUEUE
+  ### Disable the general notification queue.
+  scripts/config -d WATCH_QUEUE
 
-    ### Disable Watchdog Timer Support.
-    scripts/config -d WATCHDOG
+  ### Disable Watchdog Timer Support.
+  scripts/config -d WATCHDOG
 
-    ### Disable PCI Express ASPM L0s and L1, even if the BIOS enabled them.
-    scripts/config -d PCIEASPM_DEFAULT -e PCIEASPM_PERFORMANCE
+  ### Disable PCI Express ASPM L0s and L1, even if the BIOS enabled them.
+  scripts/config -d PCIEASPM_DEFAULT -e PCIEASPM_PERFORMANCE
 
-    ### Disable workqueue power-efficient mode by default.
-    scripts/config -d WQ_POWER_EFFICIENT_DEFAULT
+  ### Disable workqueue power-efficient mode by default.
+  scripts/config -d WQ_POWER_EFFICIENT_DEFAULT
 
-    ### Set the default state of memory_corruption_check to off.
-    scripts/config -d X86_BOOTPARAM_MEMORY_CORRUPTION_CHECK
+  ### Set the default state of memory_corruption_check to off.
+  scripts/config -d X86_BOOTPARAM_MEMORY_CORRUPTION_CHECK
 
-    ### Disable Split Lock Detect and Bus Lock Detect support.
-    scripts/config -d X86_BUS_LOCK_DETECT
+  ### Disable Split Lock Detect and Bus Lock Detect support.
+  scripts/config -d X86_BUS_LOCK_DETECT
 
-    ### Disable statistic for Change Page Attribute.
-    scripts/config -d X86_CPA_STATISTICS
+  ### Disable statistic for Change Page Attribute.
+  scripts/config -d X86_CPA_STATISTICS
 
-    ### Disable x86 instruction decoder selftest.
-    scripts/config -d X86_DECODER_SELFTEST
+  ### Disable x86 instruction decoder selftest.
+  scripts/config -d X86_DECODER_SELFTEST
 
-    ### Disable 5-level page tables support.
-    scripts/config -d X86_5LEVEL
+  ### Disable 5-level page tables support.
+  scripts/config -d X86_5LEVEL
 
-    ### Disable strong stack protector.
-    scripts/config -d STACKPROTECTOR_STRONG -e STACKPROTECTOR
+  ### Disable strong stack protector.
+  scripts/config -d STACKPROTECTOR_STRONG -e STACKPROTECTOR
 
-    ### Default to none for vsyscall table for legacy applications.
-    scripts/config -d LEGACY_VSYSCALL_XONLY -e LEGACY_VSYSCALL_NONE
+  ### Default to none for vsyscall table for legacy applications.
+  scripts/config -d LEGACY_VSYSCALL_XONLY -e LEGACY_VSYSCALL_NONE
 
-    ### Disable LDT (local descriptor table) to run 16-bit or segmented code such as
-    ### DOSEMU or some Wine programs. Enabling this adds a small amount of overhead
-    ### to context switches and increases the low-level kernel attack surface.
-    scripts/config -d UID16 -d X86_16BIT -d MODIFY_LDT_SYSCALL
+  ### Disable LDT (local descriptor table) to run 16-bit or segmented code such as
+  ### DOSEMU or some Wine programs. Enabling this adds a small amount of overhead
+  ### to context switches and increases the low-level kernel attack surface.
+  scripts/config -d UID16 -d X86_16BIT -d MODIFY_LDT_SYSCALL
 
-    ### Disable obsolete sysfs syscall support.
-    scripts/config -d SYSFS_SYSCALL
+  ### Disable obsolete sysfs syscall support.
+  scripts/config -d SYSFS_SYSCALL
 
-    ### Enforce strict size checking for sigaltstack.
-    scripts/config -e STRICT_SIGALTSTACK_SIZE
+  ### Enforce strict size checking for sigaltstack.
+  scripts/config -e STRICT_SIGALTSTACK_SIZE
 
-    ### Disable Kexec and crash features.
-    scripts/config -d KEXEC -d KEXEC_FILE -d CRASH_DUMP
+  ### Disable Kexec and crash features.
+  scripts/config -d KEXEC -d KEXEC_FILE -d CRASH_DUMP
 
-    ### Disable low-overhead sampling-based memory safety error detector.
-    scripts/config -d KFENCE
+  ### Disable low-overhead sampling-based memory safety error detector.
+  scripts/config -d KFENCE
 
-    ### Disable automatic stack variable initialization. (Clear and XanMod default)
-    scripts/config -d INIT_STACK_ALL_ZERO -e INIT_STACK_NONE
+  ### Disable automatic stack variable initialization. (Clear and XanMod default)
+  scripts/config -d INIT_STACK_ALL_ZERO -e INIT_STACK_NONE
 
-    ### Disable utilization clamping for RT/FAIR tasks.
-    scripts/config -d UCLAMP_TASK
+  ### Disable utilization clamping for RT/FAIR tasks.
+  scripts/config -d UCLAMP_TASK
 
-    ### Disable CGROUP controllers.
-    #scripts/config -d CGROUP_HUGETLB
-    #scripts/config -d CGROUP_NET_PRIO
-    #scripts/config -d CGROUP_PERF
-    scripts/config -d CGROUP_RDMA
+  ### Disable CGROUP controllers.
+  #scripts/config -d CGROUP_HUGETLB
+  #scripts/config -d CGROUP_NET_PRIO
+  #scripts/config -d CGROUP_PERF
+  scripts/config -d CGROUP_RDMA
 
-    ### Disable support for latency based cgroup IO protection.
-    #scripts/config -d BLK_CGROUP_IOLATENCY
+  ### Disable support for latency based cgroup IO protection.
+  #scripts/config -d BLK_CGROUP_IOLATENCY
 
-    ### Disable support for cost model based cgroup IO controller.
-    #scripts/config -d BLK_CGROUP_IOCOST
+  ### Disable support for cost model based cgroup IO controller.
+  #scripts/config -d BLK_CGROUP_IOCOST
 
-    ### Disable cgroup I/O controller for assigning an I/O priority class.
-    #scripts/config -d BLK_CGROUP_IOPRIO
+  ### Disable cgroup I/O controller for assigning an I/O priority class.
+  #scripts/config -d BLK_CGROUP_IOPRIO
 
-    ### Disable netfilter "control group" match support.
-    #scripts/config -d NETFILTER_XT_MATCH_CGROUP
+  ### Disable netfilter "control group" match support.
+  #scripts/config -d NETFILTER_XT_MATCH_CGROUP
 
-    ### Apply Clear defaults for NR_CPUS and NODES_SHIFT.
-    scripts/config -d CPUMASK_OFFSTACK -d MAXSMP
-    scripts/config --set-val NR_CPUS_RANGE_BEGIN 2
-    scripts/config --set-val NR_CPUS_RANGE_END 512
-    scripts/config --set-val NR_CPUS_DEFAULT 64
-    scripts/config --set-val NR_CPUS 512
-    scripts/config --set-val NODES_SHIFT 10
+  ### Apply Clear defaults for NR_CPUS and NODES_SHIFT.
+  scripts/config -d CPUMASK_OFFSTACK -d MAXSMP
+  scripts/config --set-val NR_CPUS_RANGE_BEGIN 2
+  scripts/config --set-val NR_CPUS_RANGE_END 512
+  scripts/config --set-val NR_CPUS_DEFAULT 64
+  scripts/config --set-val NR_CPUS 512
+  scripts/config --set-val NODES_SHIFT 10
 fi

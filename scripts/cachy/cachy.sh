@@ -2,7 +2,10 @@
 
 set -euo pipefail
 
-cd "$1" || { echo "Directory not found: $1"; exit 1; }
+cd "$1" || {
+  echo "Directory not found: $1"
+  exit 1
+}
 
 ### Answer unconfigured (NEW) kernel options in the CachyOS config.
 scripts/config -d DRM_MGAG200_DISABLE_WRITECOMBINE
@@ -104,7 +107,6 @@ scripts/config -d TOUCHSCREEN_MSG2638
 scripts/config -d TOUCHSCREEN_TSC2007_IIO
 scripts/config -d TOUCHSCREEN_ZINITIX
 scripts/config -d INPUT_TABLET
-
 
 # Disable Controller Area Network (CAN) bus subsystem support
 scripts/config -d CAN
@@ -344,7 +346,6 @@ scripts/config -d VIDEO_DW9807_VCM
 # Customize TV tuners
 scripts/config -d MEDIA_TUNER_MSI001
 scripts/config -d MEDIA_TUNER_TDA18250
-
 
 # drm debugging
 scripts/config -d DRM_I915_WERROR

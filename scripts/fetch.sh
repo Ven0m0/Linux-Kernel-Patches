@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-set -eou pipefail; shopt -s nullglob globstar; IFS=$'\n\t'
+set -eou pipefail
+shopt -s nullglob globstar
+IFS=$'\n\t'
 export LC_ALL=C LANG=C
 
 # Lists to process: [list_url]="target_dir"
@@ -11,29 +13,35 @@ declare -A lists=(
 # Maximum parallel downloads (adjust based on your connection)
 readonly MAX_PARALLEL=${MAX_PARALLEL:-4}
 
-fetch_file(){
+fetch_file() {
   local src="$1" dest="$2"
   if curl -fsSL "$src" -o "${dest}.tmp" 2>/dev/null; then
     mv "${dest}.tmp" "$dest"
   else
     echo "Failed: $src" >&2
-    rm -f "${dest}.tmp"; return 1
+    rm -f "${dest}.tmp"
+    return 1
   fi
 }
 
-fetch_list(){
+fetch_list() {
   local url="$1" dir="$2" list
   mkdir -p "$dir"
-  list=$(curl -fsSL "$url") || { echo "Failed: $url" >&2; return 1; }
+  list=$(curl -fsSL "$url") || {
+    echo "Failed: $url" >&2
+    return 1
+  }
   local -a pids=()
   local job_count=0
   while IFS= read -r line; do
     [[ $line =~ ^[[:space:]]*# || $line =~ ^[[:space:]]*$ ]] && continue
     local src dest
     if [[ $line =~ ^([^[:space:]]+)[[:space:]]+([^[:space:]]+)$ ]]; then
-      src=${BASH_REMATCH[1]}; dest=${BASH_REMATCH[2]}
+      src=${BASH_REMATCH[1]}
+      dest=${BASH_REMATCH[2]}
     else
-      src=$line; dest=$(basename "$line")
+      src=$line
+      dest=$(basename "$line")
     fi
     # Parallel download with job control
     fetch_file "$src" "${dir}/${dest}" &
@@ -42,7 +50,8 @@ fetch_list(){
     # Limit parallel jobs
     if ((job_count >= MAX_PARALLEL)); then
       wait "${pids[@]}"
-      pids=(); job_count=0
+      pids=()
+      job_count=0
     fi
   done <<<"$list"
   # Wait for remaining jobs

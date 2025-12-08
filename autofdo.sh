@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-LC_ALL=C LANG=C 
+LC_ALL=C LANG=C
 export LLVM=1 LLVM_IAS=1
 DIR="${HOME}/projects/kernel"
 KERNELDIR="${DIR}/linux/linux-cachyos/linux-cachyos"
@@ -17,7 +17,9 @@ zcat /proc/config.gz >.config
 make LLVM=1 LLVM_IAS=1 prepare
 scripts/config -e CONFIG_AUTOFDO_CLANG -e CONFIG_LTO_CLANG_THIN
 make LLVM=1 LLVM_IAS=1 pacman-pkg -j"$NPROC"
-rm -f linux-upstream-api-headers-"$pkgver"
+# Only remove if pkgver is defined (from PKGBUILD context)
+pkgver="${pkgver:-unknown}"
+[[ "$pkgver" != "unknown" ]] && rm -f linux-upstream-api-headers-"$pkgver"
 sudo pacman -U linux-upstream{,-headers,-debug}-"$pkgver".tar.zst
 
 git clone https://github.com/cachyos/linux-cachyos && cd linux-cachyos/linux-cachyos || exit

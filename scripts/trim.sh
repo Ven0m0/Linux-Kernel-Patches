@@ -7,14 +7,23 @@ set -euo pipefail
 export LC_ALL=C
 
 # Validate kernel source directory
-[[ -n "${1:-}" ]] || { echo "Error: Kernel source directory not specified" >&2; exit 1; }
-cd "$1" || { echo "Error: Directory not found: $1" >&2; exit 1; }
-[[ -f "scripts/config" ]] || { echo "Error: Not a valid kernel source tree" >&2; exit 1; }
+[[ -n ${1:-} ]] || {
+  echo "Error: Kernel source directory not specified" >&2
+  exit 1
+}
+cd "$1" || {
+  echo "Error: Directory not found: $1" >&2
+  exit 1
+}
+[[ -f "scripts/config" ]] || {
+  echo "Error: Not a valid kernel source tree" >&2
+  exit 1
+}
 
 # Sort and deduplicate modprobed databases
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 for db in "$script_dir"/*/*modprobed.db; do
-  [[ -f "$db" ]] || continue
+  [[ -f $db ]] || continue
   sort -u "$db" -o "$db"
 done
 
