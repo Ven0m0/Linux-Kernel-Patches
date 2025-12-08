@@ -28,3 +28,4 @@ https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/dma.patch
 https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/btrfs.patch
 https://github.com/babiulep/my-kernel-patches/blob/main/NVIDIA/6.18/in_irq.patch
 https://github.com/babiulep/my-kernel-patches/blob/main/AMNEZIAWG/blake2s.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/zstd.patch
