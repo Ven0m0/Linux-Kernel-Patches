@@ -209,6 +209,7 @@ This repository aggregates patches from the following upstream sources:
 - [openSUSE kernel-source](https://github.com/openSUSE/kernel-source) - Enterprise patches
 - [build-ubuntu-kernel](https://github.com/arvin-foroutan/build-ubuntu-kernel) - Ubuntu kernel builds
 - [zram-ir](https://github.com/firelzrd/zram-ir) - ZRAM improvements
+- [babiulep](https://github.com/babiulep/my-kernel-patches)
 
 ## Tools and Utilities
 
