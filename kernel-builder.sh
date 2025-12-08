@@ -13,16 +13,24 @@ BLU=$'\e[34m' MGN=$'\e[35m' CYN=$'\e[36m' BLD=$'\e[1m'
 LBLU=$'\e[38;5;117m' PNK=$'\e[38;5;218m' BWHT=$'\e[97m'
 
 #──────────── Helpers ──────────────────
-has(){ command -v "$1" &>/dev/null; }
-die(){ printf '%b\n' "${RED}Error:${DEF} $*" >&2; exit 1; }
-info(){ printf '%b\n' "${GRN}$*${DEF}"; }
-warn(){ printf '%b\n' "${YLW}$*${DEF}"; }
-msg(){ printf '%b\n' "${CYN}$*${DEF}"; }
+has() { command -v "$1" &>/dev/null; }
+die() {
+  printf '%b\n' "${RED}Error:${DEF} $*" >&2
+  exit 1
+}
+info() { printf '%b\n' "${GRN}$*${DEF}"; }
+warn() { printf '%b\n' "${YLW}$*${DEF}"; }
+msg() { printf '%b\n' "${CYN}$*${DEF}"; }
 readonly CURL_OPTS=(-fLSs --http2 --proto '=https' --tlsv1.2 --compressed --connect-timeout 15 --retry 3 --retry-delay 2 --retry-max-time 60 --progress-bar)
-fetch(){ local url=$1 out=${2:-}; local opts=("${CURL_OPTS[@]}"); [[ -n $out ]] && opts+=(-o "$out"); curl "${opts[@]}" "$url"; }
+fetch() {
+  local url=$1 out=${2:-}
+  local opts=("${CURL_OPTS[@]}")
+  [[ -n $out ]] && opts+=(-o "$out")
+  curl "${opts[@]}" "$url"
+}
 
 #──────────── PORTED/ADAPTED FROM AKM ─────────────────
-LocalVersion(){ # e.g. LocalVersion linux
+LocalVersion() { # e.g. LocalVersion linux
   local pkg="${1##*/}"
   if has expac; then
     expac -Q %v "$pkg" 2>/dev/null || printf ''
@@ -30,17 +38,23 @@ LocalVersion(){ # e.g. LocalVersion linux
     pacman -Q "$pkg" 2>/dev/null | awk '{print $2}'
   fi
 }
-Exist(){ local version="$1"; [[ -n "$version" ]] && printf TRUE || printf FALSE; }
-UniqueArr(){ # de-duplicate list, usage: UniqueArr arr
+Exist() {
+  local version="$1"
+  [[ -n $version ]] && printf TRUE || printf FALSE
+}
+UniqueArr() { # de-duplicate list, usage: UniqueArr arr
   local -n arr="$1"
-  local to=(); local xx yy
+  local to=()
+  local xx
+  # Use associative array for O(1) lookup instead of O(n²) nested loop
+  declare -A seen
   for xx in "${arr[@]}"; do
-    for yy in "${to[@]}"; do [[ "$xx" == "$yy" ]] && break; done
-    [[ "$xx" != "$yy" ]] && to+=("$xx")
+    [[ -z ${seen[$xx]:-} ]] && to+=("$xx")
+    seen[$xx]=1
   done
   arr=("${to[@]}")
 }
-AvailableKernelsAndHeaders(){ # Print available kernels (Arch-family, CLI)
+AvailableKernelsAndHeaders() { # Print available kernels (Arch-family, CLI)
   if ! has expac; then die "expac required for kernel package detection"; fi
   local headers kernels kernel header
   headers=($(expac -Ss '%r/%n' 'linux[-]*[^ pi]*-headers' \
@@ -49,19 +63,19 @@ AvailableKernelsAndHeaders(){ # Print available kernels (Arch-family, CLI)
     kernel="${header%-headers}"
     printf "%s %s\n" "$kernel" "$header"
   done
-  [[ -v akm_kernels_headers_user ]] && [[ "${#akm_kernels_headers_user[@]}" -gt 0 ]] && printf "%s\n" "${akm_kernels_headers_user[@]}"
+  [[ -v akm_kernels_headers_user ]] && [[ ${#akm_kernels_headers_user[@]} -gt 0 ]] && printf "%s\n" "${akm_kernels_headers_user[@]}"
 }
-akm_load_config(){
+akm_load_config() {
   local conf=/etc/akm.conf
   [[ -f $conf ]] || return
   # shellcheck disable=SC1090
   source "$conf"
-  [[ -n "${KERNEL_HEADER_WITH_KERNEL:-}" ]] && connect_header_with_kernel="$KERNEL_HEADER_WITH_KERNEL"
-  [[ -n "${AKM_KERNELS_HEADERS:-}" ]] && akm_kernels_headers_user=("${AKM_KERNELS_HEADERS[@]}")
-  [[ -n "${AKM_WINDOW_WIDTH:-}" ]] && akm_window_width="$AKM_WINDOW_WIDTH"
-  [[ -n "${AKM_PREFER_SMALL_WINDOW:-}" ]] && small_font="$AKM_PREFER_SMALL_WINDOW"
+  [[ -n ${KERNEL_HEADER_WITH_KERNEL:-} ]] && connect_header_with_kernel="$KERNEL_HEADER_WITH_KERNEL"
+  [[ -n ${AKM_KERNELS_HEADERS:-} ]] && akm_kernels_headers_user=("${AKM_KERNELS_HEADERS[@]}")
+  [[ -n ${AKM_WINDOW_WIDTH:-} ]] && akm_window_width="$AKM_WINDOW_WIDTH"
+  [[ -n ${AKM_PREFER_SMALL_WINDOW:-} ]] && small_font="$AKM_PREFER_SMALL_WINDOW"
 }
-parse_repo_type(){
+parse_repo_type() {
   if has pacman-conf && pacman-conf --repo-list | grep -q "\-testing$"; then
     echo "Testing"
   else
@@ -71,7 +85,7 @@ parse_repo_type(){
 #─────────────────────────────────────────────
 
 #──────────── Usage ────────────────────
-show_usage(){
+show_usage() {
   cat <<EOF
 ${GRN}Usage:${DEF} ${0##*/} [command] [options]
 
@@ -86,7 +100,7 @@ EOF
 }
 
 #───── Kernel/Package Info & List/Install (AKM-inspired) ─────
-list_kernels(){
+list_kernels() {
   info "Available Kernel Packages (Arch-family style):"
   local kernels=()
   mapfile -t kernels < <(AvailableKernelsAndHeaders)
@@ -106,20 +120,32 @@ list_kernels(){
 }
 
 #──────────── Main Command Handling ────────────────
-main(){
+main() {
   cd "$SCRIPT_DIR"
   [[ $# -eq 0 ]] && show_usage && exit 1
   case $1 in
-    catgirl) shift; build_catgirl "$@" ;;
-    tkg) shift; build_tkg "$@" ;;
-    patches) shift; manage_patches "$@" ;;
+    catgirl)
+      shift
+      build_catgirl "$@"
+      ;;
+    tkg)
+      shift
+      build_tkg "$@"
+      ;;
+    patches)
+      shift
+      manage_patches "$@"
+      ;;
     compile) bash scripts/compile.sh ;;
     config) bash scripts/config.sh ;;
     fetch) bash scripts/fetch.sh ;;
     list) list_patches ;;
     kernels) list_kernels ;; # ADDED
-    help|--help|-h) show_usage ;;
-    *) die "Unknown command: $1"; show_usage ;;
+    help | --help | -h) show_usage ;;
+    *)
+      die "Unknown command: $1"
+      show_usage
+      ;;
   esac
 }
 main "$@"
