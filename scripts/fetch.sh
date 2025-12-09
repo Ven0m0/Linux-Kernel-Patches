@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-set -eou pipefail
+set -euo pipefail
 shopt -s nullglob globstar
 IFS=$'\n\t'
-export LC_ALL=C LANG=C
+LC_ALL=C LANG=C
 
 # Lists to process: [list_url]="target_dir"
 declare -A lists=(
@@ -13,9 +13,9 @@ declare -A lists=(
 # Maximum parallel downloads (adjust based on your connection)
 readonly MAX_PARALLEL=${MAX_PARALLEL:-4}
 
-fetch_file() {
+fetch_file(){
   local src="$1" dest="$2"
-  if curl -fsSL "$src" -o "${dest}.tmp" 2>/dev/null; then
+  if curl -fsSL "$src" -o "${dest}.tmp" &>/dev/null; then
     mv "${dest}.tmp" "$dest"
   else
     echo "Failed: $src" >&2
@@ -24,7 +24,7 @@ fetch_file() {
   fi
 }
 
-fetch_list() {
+fetch_list(){
   local url="$1" dir="$2" list
   mkdir -p "$dir"
   list=$(curl -fsSL "$url") || {

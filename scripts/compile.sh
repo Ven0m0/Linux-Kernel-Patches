@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+shopt -s nullglob globstar
+IFS=$'\n\t'
 
 # Store module database
 if command -v modprobed-db &>/dev/null; then
@@ -74,7 +76,7 @@ scripts/config \
 
 # Build configuration
 readonly MODPROBED_DB="${HOME}/.config/modprobed.db"
-if [[ -f $MODPROBED_DB ]]; then
+if [[ -f "$MODPROBED_DB" ]]; then
   yes "" | make LSMOD="$MODPROBED_DB" localmodconfig
 else
   echo "Warning: modprobed.db not found at $MODPROBED_DB" >&2

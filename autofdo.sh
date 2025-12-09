@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+shopt -s nullglob globstar
+IFS=$'\n\t'
 LC_ALL=C LANG=C
 export LLVM=1 LLVM_IAS=1
 DIR="${HOME}/projects/kernel"
@@ -23,7 +25,7 @@ pkgver="${pkgver:-unknown}"
 sudo pacman -U linux-upstream{,-headers,-debug}-"$pkgver".tar.zst
 
 git clone https://github.com/cachyos/linux-cachyos && cd linux-cachyos/linux-cachyos || exit
-sudo sh -c "echo 0 >/proc/sys/kernel/{kptr_restrict,perf_event_paranoid}"
+sudo sh -c "echo 0 >/proc/sys/kernel/kptr_restrict && echo 0 >/proc/sys/kernel/perf_event_paranoid"
 cachyos-benchmarker "$KERNELDIR"
 
 echo "Running sysbench: CPU, Memory, I/O..."

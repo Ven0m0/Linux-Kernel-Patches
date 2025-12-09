@@ -2,6 +2,8 @@
 # Set extra kernel options for optimized kernel builds
 
 set -euo pipefail
+shopt -s nullglob globstar
+IFS=$'\n\t'
 
 # Validate kernel source directory
 [[ -n ${1:-} ]] || {

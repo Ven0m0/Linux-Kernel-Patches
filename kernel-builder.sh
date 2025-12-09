@@ -2,7 +2,9 @@
 set -euo pipefail
 shopt -s nullglob globstar
 IFS=$'\n\t'
-export LC_ALL=C LANG=C DEBIAN_FRONTEND=noninteractive HOME="${HOME:-/home/${SUDO_USER:-$USER}}"
+LC_ALL=C LANG=C
+export DEBIAN_FRONTEND=noninteractive
+HOME="${HOME:-/home/${SUDO_USER:-$USER}}"
 
 VERSION="1.0.0"
 SCRIPT_DIR="$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,16 +15,16 @@ BLU=$'\e[34m' MGN=$'\e[35m' CYN=$'\e[36m' BLD=$'\e[1m'
 LBLU=$'\e[38;5;117m' PNK=$'\e[38;5;218m' BWHT=$'\e[97m'
 
 #──────────── Helpers ──────────────────
-has() { command -v "$1" &>/dev/null; }
-die() {
+has(){ command -v "$1" &>/dev/null; }
+die(){
   printf '%b\n' "${RED}Error:${DEF} $*" >&2
   exit 1
 }
-info() { printf '%b\n' "${GRN}$*${DEF}"; }
-warn() { printf '%b\n' "${YLW}$*${DEF}"; }
-msg() { printf '%b\n' "${CYN}$*${DEF}"; }
+info(){ printf '%b\n' "${GRN}$*${DEF}"; }
+warn(){ printf '%b\n' "${YLW}$*${DEF}"; }
+msg(){ printf '%b\n' "${CYN}$*${DEF}"; }
 readonly CURL_OPTS=(-fLSs --http2 --proto '=https' --tlsv1.2 --compressed --connect-timeout 15 --retry 3 --retry-delay 2 --retry-max-time 60 --progress-bar)
-fetch() {
+fetch(){
   local url=$1 out=${2:-}
   local opts=("${CURL_OPTS[@]}")
   [[ -n $out ]] && opts+=(-o "$out")
@@ -30,19 +32,19 @@ fetch() {
 }
 
 #──────────── PORTED/ADAPTED FROM AKM ─────────────────
-LocalVersion() { # e.g. LocalVersion linux
+LocalVersion(){ # e.g. LocalVersion linux
   local pkg="${1##*/}"
   if has expac; then
-    expac -Q %v "$pkg" 2>/dev/null || printf ''
+    expac -Q %v "$pkg" &>/dev/null || printf ''
   else
-    pacman -Q "$pkg" 2>/dev/null | awk '{print $2}'
+    pacman -Q "$pkg" &>/dev/null | awk '{print $2}'
   fi
 }
-Exist() {
+Exist(){
   local version="$1"
-  [[ -n $version ]] && printf TRUE || printf FALSE
+  [[ -n "$version" ]] && printf TRUE || printf FALSE
 }
-UniqueArr() { # de-duplicate list, usage: UniqueArr arr
+UniqueArr(){ # de-duplicate list, usage: UniqueArr arr
   local -n arr="$1"
   local to=()
   local xx
@@ -54,7 +56,7 @@ UniqueArr() { # de-duplicate list, usage: UniqueArr arr
   done
   arr=("${to[@]}")
 }
-AvailableKernelsAndHeaders() { # Print available kernels (Arch-family, CLI)
+AvailableKernelsAndHeaders(){ # Print available kernels (Arch-family, CLI)
   if ! has expac; then die "expac required for kernel package detection"; fi
   local headers kernels kernel header
   headers=($(expac -Ss '%r/%n' 'linux[-]*[^ pi]*-headers' \
@@ -65,9 +67,9 @@ AvailableKernelsAndHeaders() { # Print available kernels (Arch-family, CLI)
   done
   [[ -v akm_kernels_headers_user ]] && [[ ${#akm_kernels_headers_user[@]} -gt 0 ]] && printf "%s\n" "${akm_kernels_headers_user[@]}"
 }
-akm_load_config() {
+akm_load_config(){
   local conf=/etc/akm.conf
-  [[ -f $conf ]] || return
+  [[ -f "$conf" ]] || return
   # shellcheck disable=SC1090
   source "$conf"
   [[ -n ${KERNEL_HEADER_WITH_KERNEL:-} ]] && connect_header_with_kernel="$KERNEL_HEADER_WITH_KERNEL"
@@ -75,7 +77,7 @@ akm_load_config() {
   [[ -n ${AKM_WINDOW_WIDTH:-} ]] && akm_window_width="$AKM_WINDOW_WIDTH"
   [[ -n ${AKM_PREFER_SMALL_WINDOW:-} ]] && small_font="$AKM_PREFER_SMALL_WINDOW"
 }
-parse_repo_type() {
+parse_repo_type(){
   if has pacman-conf && pacman-conf --repo-list | grep -q "\-testing$"; then
     echo "Testing"
   else
@@ -85,7 +87,7 @@ parse_repo_type() {
 #─────────────────────────────────────────────
 
 #──────────── Usage ────────────────────
-show_usage() {
+show_usage(){
   cat <<EOF
 ${GRN}Usage:${DEF} ${0##*/} [command] [options]
 
@@ -100,7 +102,7 @@ EOF
 }
 
 #───── Kernel/Package Info & List/Install (AKM-inspired) ─────
-list_kernels() {
+list_kernels(){
   info "Available Kernel Packages (Arch-family style):"
   local kernels=()
   mapfile -t kernels < <(AvailableKernelsAndHeaders)
@@ -120,7 +122,7 @@ list_kernels() {
 }
 
 #──────────── Main Command Handling ────────────────
-main() {
+main(){
   cd "$SCRIPT_DIR"
   [[ $# -eq 0 ]] && show_usage && exit 1
   case $1 in

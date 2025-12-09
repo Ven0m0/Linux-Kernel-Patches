@@ -3,8 +3,9 @@
 # This significantly reduces kernel size by removing unused features
 
 set -euo pipefail
-
-export LC_ALL=C
+shopt -s nullglob globstar
+IFS=$'\n\t'
+LC_ALL=C
 
 # Validate kernel source directory
 [[ -n ${1:-} ]] || {
@@ -23,7 +24,7 @@ cd "$1" || {
 # Sort and deduplicate modprobed databases
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 for db in "$script_dir"/*/*modprobed.db; do
-  [[ -f $db ]] || continue
+  [[ -f "$db" ]] || continue
   sort -u "$db" -o "$db"
 done
 

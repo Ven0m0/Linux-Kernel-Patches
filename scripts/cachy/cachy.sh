@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+shopt -s nullglob globstar
+IFS=$'\n\t'
 
 cd "$1" || {
-  echo "Directory not found: $1"
+  echo "Directory not found: $1" >&2
   exit 1
 }
 
