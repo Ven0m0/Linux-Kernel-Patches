@@ -48,6 +48,10 @@
 # Fuzzy finder run in a separate shell (subshell) - export variables for fzf subshells
 # shellcheck disable=SC2218 # Allow usage of printf with variable format strings
 set -e
+set -u
+set -o pipefail
+shopt -s nullglob globstar
+IFS=$'\n\t'
 
 # TKG-Installer VERSION definition
 _tkg_version="v0.26.4"
