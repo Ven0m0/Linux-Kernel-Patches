@@ -75,7 +75,7 @@ patch -p1 < pollrate.patch
 **Apply manually**:
 ```bash
 cd linux-6.16
-patch -p1 < /path/to/Linux-Kernel-Patches/6.16/zram-ir-1.2.patch
+patch -p1 < zram-ir-1.2.patch
 ```
 
 ---
