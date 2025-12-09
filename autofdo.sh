@@ -4,11 +4,12 @@ shopt -s nullglob globstar
 IFS=$'\n\t'
 LC_ALL=C LANG=C
 export LLVM=1 LLVM_IAS=1
-DIR="${HOME}/projects/kernel"
-KERNELDIR="${DIR}/linux/linux-cachyos/linux-cachyos"
-AUTOPROF="${KERNELDIR}/kernel-compilation.afdo"
-VM_PATH="/usr/lib/modules/6.12.0-rc5-00015-gd89df38260bb/build/vmlinux"
-NPROC=$(nproc)
+readonly DIR="${HOME}/projects/kernel"
+readonly KERNELDIR="${DIR}/linux/linux-cachyos/linux-cachyos"
+readonly AUTOPROF="${KERNELDIR}/kernel-compilation.afdo"
+readonly VM_PATH="/usr/lib/modules/6.12.0-rc5-00015-gd89df38260bb/build/vmlinux"
+readonly NPROC=$(nproc)
+
 sudo -v
 mkdir -p "$KERNELDIR" && cd "$KERNELDIR" || exit
 
@@ -19,16 +20,17 @@ zcat /proc/config.gz >.config
 make LLVM=1 LLVM_IAS=1 prepare
 scripts/config -e CONFIG_AUTOFDO_CLANG -e CONFIG_LTO_CLANG_THIN
 make LLVM=1 LLVM_IAS=1 pacman-pkg -j"$NPROC"
+
 # Only remove if pkgver is defined (from PKGBUILD context)
 pkgver="${pkgver:-unknown}"
-[[ "$pkgver" != "unknown" ]] && rm -f linux-upstream-api-headers-"$pkgver"
+[[ $pkgver != unknown ]] && rm -f linux-upstream-api-headers-"$pkgver"
 sudo pacman -U linux-upstream{,-headers,-debug}-"$pkgver".tar.zst
 
 git clone https://github.com/cachyos/linux-cachyos && cd linux-cachyos/linux-cachyos || exit
 sudo sh -c "echo 0 >/proc/sys/kernel/kptr_restrict && echo 0 >/proc/sys/kernel/perf_event_paranoid"
 cachyos-benchmarker "$KERNELDIR"
 
-echo "Running sysbench: CPU, Memory, I/O..."
+printf 'Running sysbench: CPU, Memory, I/O...\n'
 sysbench cpu --time=30 --cpu-max-prime=50000 --threads="$NPROC" run
 sysbench memory --memory-block-size=1M --memory-total-size=16G run
 sysbench memory --memory-block-size=1M --memory-total-size=16G --memory-oper=read --num-threads=16 run
