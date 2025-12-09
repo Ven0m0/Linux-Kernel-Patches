@@ -52,7 +52,7 @@ This document provides detailed information about various kernel patch sources a
 ```bash
 cd linux-6.18
 patch -p1 < /path/to/Linux-Kernel-Patches/6.18/pollrate.patch
-```
+patch -p1 < pollrate.patch
 
 ### ZRAM-IR (ZRAM Improved Read) ✅
 
