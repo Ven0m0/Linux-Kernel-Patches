@@ -40,18 +40,22 @@
 
 # shellcheck disable=SC2218 # Allow usage of printf with variable format strings
 set -e
+set -u
+set -o pipefail
+shopt -s nullglob globstar
+IFS=$'\n\t'
 
 # Initialize color and style (copied from tkginstaller)
-__init_style() {
+__init_style(){
   _break=$'\n'
   _reset=$'\033[0m'
-  __color() {
+  __color(){
     local r=${1:-255} g=${2:-255} b=${3:-255} idx=${4:-7}
     if [[ ${COLORTERM,,} == *truecolor* || ${COLORTERM,,} == *24bit* ]]; then
       printf '\033[38;2;%d;%d;%dm' "$r" "$g" "$b"
       return 0
     fi
-    if command -v tput >/dev/null 2>&1; then
+    if command -v tput &>/dev/null; then
       local _tput_seq
       _tput_seq=$(
         tput sgr0
@@ -81,8 +85,8 @@ __init_style() {
   _gray="$(__color 200 250 200 7)"       # gray
 
   # Draw underline
-  _uline_on=$(tput smul 2>/dev/null || printf '\033[4m')
-  _uline_off=$(tput rmul 2>/dev/null || printf '\033[24m')
+  _uline_on=$(tput smul &>/dev/null || printf '\033[4m')
+  _uline_off=$(tput rmul &>/dev/null || printf '\033[24m')
 }
 
 # Initialize colors
@@ -94,13 +98,13 @@ _tkg_install_dir="${HOME}/.tkginstaller"
 _tkg_script_name="tkginstaller"
 
 # Functions
-__msg_info() { printf '%b\n' "${_green_light}$*${_reset}"; }
-__msg_error() { printf '%b\n' "${_red}ERROR: $*${_reset}"; }
-__msg_warning() { printf '%b\n' "${_orange}WARNING: $*${_reset}"; }
-__msg_step() { printf '%b\n' "${_gray} ➜➜ $*${_reset}"; }
-__msg_prompt() { printf '%b\n' "$*"; }
+__msg_info(){ printf '%b\n' "${_green_light}$*${_reset}"; }
+__msg_error(){ printf '%b\n' "${_red}ERROR: $*${_reset}"; }
+__msg_warning(){ printf '%b\n' "${_orange}WARNING: $*${_reset}"; }
+__msg_step(){ printf '%b\n' "${_gray} ➜➜ $*${_reset}"; }
+__msg_prompt(){ printf '%b\n' "$*"; }
 
-__banner() {
+__banner(){
   local __color="${1:-$_green_neon}"
   printf '%b\n' "${__color}"
   cat <<"EOF"
@@ -127,9 +131,9 @@ if [[ "$(id -u)" -eq 0 ]]; then
   fi
 fi
 
-__cleanup() {
-  cd "$OLDPWD" 2>/dev/null || true
-  if [[ -n ${TEMP_DIR:-} && -d $TEMP_DIR ]]; then
+__cleanup(){
+  cd "$OLDPWD" &>/dev/null || true
+  if [[ -n ${TEMP_DIR:-} && -d "$TEMP_DIR" ]]; then
     rm -rf "$TEMP_DIR"
   fi
 }
@@ -137,7 +141,7 @@ __cleanup() {
 trap __cleanup EXIT INT TERM
 
 # Main installation
-__main() {
+__main(){
   # Welcome message
   __banner
   printf "%s" "${_green_neon}Starting installation"
@@ -173,7 +177,7 @@ __main() {
   fi
 
   __msg_step "Downloading checksum..."
-  if curl -fsSL "${_tkg_repo_url}/SHA256SUMS" -o "SHA256SUMS" 2>/dev/null; then
+  if curl -fsSL "${_tkg_repo_url}/SHA256SUMS" -o "SHA256SUMS" &>/dev/null; then
     __msg_info "[✓] Download complete${_break}"
 
     __msg_step "Verifying integrity..."
@@ -227,7 +231,7 @@ __main() {
 
   if [[ -n $SHELL_RC ]]; then
     # Check if alias already exists
-    if grep -q "alias ${_tkg_script_name}=" "$SHELL_RC" 2>/dev/null; then
+    if grep -q "alias ${_tkg_script_name}=" "$SHELL_RC" &>/dev/null; then
       __msg_info "[✓] Alias already exists in $SHELL_RC"
     else
       # Append alias to shell RC file in a single here-doc block
