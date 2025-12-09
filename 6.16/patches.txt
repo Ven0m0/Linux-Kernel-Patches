@@ -1,1 +1,4 @@
 https://raw.githubusercontent.com/firelzrd/zram-ir/refs/heads/main/patches/0001-linux6.16.0-zram-ir-1.2.patch
+
+# ZRAM-IR - Improved ZRAM read performance
+https://raw.githubusercontent.com/firelzrd/zram-ir/main/patches/0001-linux6.16.0-zram-ir-1.2.patch zram-ir-1.2.patch
