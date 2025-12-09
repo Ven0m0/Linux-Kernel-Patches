@@ -4,9 +4,6 @@ A custom Linux build system forked from the work by [CachyOS](https://github.com
 
 To achieve this goal, we provide the option to disable certain Linux kernel features and pull in certain patches.
 
-<!-- This kernel is able to allocate several gigabytes over its physical memory and swap it into zram, whereas mainline would livelock immediately. -->
-<!-- TODO: show more cases or disprove the above -->
-
 <details>
 <summary>List of optimizations</summary>
 
