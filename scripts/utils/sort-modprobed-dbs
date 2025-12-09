@@ -1,13 +1,32 @@
 #!/usr/bin/env bash
+# Sort and deduplicate modprobed database files
+# Usage: sort-modprobed-dbs [directory]
+#
+# If no directory specified, searches from current directory
+
 set -euo pipefail
 shopt -s nullglob globstar
 IFS=$'\n\t'
 LC_ALL=C
-WORKDIR="$(builtin cd -- "$(dirname -- "${BASH_SOURCE[0]:-}")" && printf '%s\n' "$PWD")"
-builtin cd -- "$WORKDIR" || exit 1
 
-# Inline trivial function - only called once
-for db in "${WORKDIR:-$PWD}"/*/*modprobed.db; do
-  [[ -f "$db" ]] || continue
+# Search directory: argument or current directory
+SEARCH_DIR="${1:-$PWD}"
+
+[[ -d "$SEARCH_DIR" ]] || {
+  echo "Error: Directory not found: $SEARCH_DIR" >&2
+  exit 1
+}
+
+# Find and sort all modprobed.db files
+found=0
+while IFS= read -r -d '' db; do
+  echo "Sorting: $db"
   sort -u "$db" -o "$db.tmp" && mv "$db.tmp" "$db"
-done
+  ((found++))
+done < <(find "$SEARCH_DIR" -type f -name "*modprobed.db" -print0)
+
+if [[ $found -eq 0 ]]; then
+  echo "No modprobed.db files found in: $SEARCH_DIR"
+else
+  echo "Sorted $found modprobed.db file(s)"
+fi
