@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
-set -euo pipefail; shopt -s nullglob globstar
+set -euo pipefail
+shopt -s nullglob globstar
+IFS=$'\n\t'
 LC_ALL=C
 WORKDIR="$(builtin cd -- "$(dirname -- "${BASH_SOURCE[0]:-}")" && printf '%s\n' "$PWD")"
 builtin cd -- "$WORKDIR" || exit 1
 
-_sort-moddbs(){
-  local script_dir="${WORKDIR:-$PWD}" db
-  for db in "${script_dir}/*/*modprobed.db"; do
-    [[ -f "$db" ]] || continue
-    sort -u "$db" -o "$db.tmp" && mv "$db.tmp" "$db"
-  done
-}
-_sort-moddbs
+# Inline trivial function - only called once
+for db in "${WORKDIR:-$PWD}"/*/*modprobed.db; do
+  [[ -f "$db" ]] || continue
+  sort -u "$db" -o "$db.tmp" && mv "$db.tmp" "$db"
+done
