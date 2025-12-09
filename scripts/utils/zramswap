@@ -8,6 +8,8 @@
 # - https://www.kernel.org/doc/Documentation/blockdev/zram.txt
 # - https://github.com/firelzrd/zram-ir/blob/main/scripts/zramswap
 set -euo pipefail
+shopt -s nullglob globstar
+IFS=$'\n\t'
 readonly CONFIG="/etc/default/zramswap"
 readonly SWAP_DEV="/dev/zram0"
 readonly HAS_LOGGER=$(command -v logger &>/dev/null && echo 1 || echo 0)
@@ -22,7 +24,7 @@ wlog(){ [[ $HAS_LOGGER -eq 1 ]] && logger -s "$*" || echo "$*"; }
 start(){
   wlog "Starting ZRAM swap"
   # Load config with defaults
-  [[ -r "$CONFIG" ]] && source "$CONFIG" 2>/dev/null || wlog "Using default configuration"
+  [[ -r "$CONFIG" ]] && source "$CONFIG" &>/dev/null || wlog "Using default configuration"
   # Set defaults if not specified
   : "${ALGO:=zstd:2,zstd:4}" "${SIZE:=256}" "${PRIORITY:=100}" "${PERCENT:=}"
   # Calculate size
@@ -51,9 +53,9 @@ start(){
   done
   # Initialize swap
   echo -n "$size_bytes" > /sys/block/zram0/disksize || elog "Failed to set device size"
-  mkswap "$SWAP_DEV" >/dev/null || elog "Failed to initialize swap device"
+  mkswap "$SWAP_DEV" &>/dev/null || elog "Failed to initialize swap device"
   swapon -p "$PRIORITY" "$SWAP_DEV" || elog "Failed to enable swap device"
-  wlog "ZRAM swap started successfully ($(( size_bytes / 1024 / 1024 ))MB)"
+  wlog "ZRAM swap started successfully ($((size_bytes / 1024 / 1024))MB)"
 }
 status(){
   command -v zramctl &>/dev/null || elog "zramctl not found (install util-linux)"
@@ -63,7 +65,7 @@ status(){
 stop(){
   wlog "Stopping ZRAM swap"
   if [[ -b "$SWAP_DEV" ]]; then
-    swapoff "$SWAP_DEV" 2>/dev/null || wlog "Failed to disable swap: $SWAP_DEV"
+    swapoff "$SWAP_DEV" &>/dev/null || wlog "Failed to disable swap: $SWAP_DEV"
     modprobe -r zram || elog "Failed to remove zram module"
     wlog "ZRAM swap stopped"
   else
