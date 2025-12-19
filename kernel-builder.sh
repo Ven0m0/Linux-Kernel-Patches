@@ -1,75 +1,54 @@
 #!/usr/bin/env bash
+# shellcheck enable=all shell=bash source-path=SCRIPTDIR external-sources=true
 set -euo pipefail
 shopt -s nullglob globstar
+export LC_ALL=C DEBIAN_FRONTEND=noninteractive
 IFS=$'\n\t'
-LC_ALL=C LANG=C
-export DEBIAN_FRONTEND=noninteractive
+s=${BASH_SOURCE[0]}; [[ $s != /* ]] && s=$PWD/$s
+SCRIPT_DIR=$(cd -P -- "${s%/*}" && pwd)
+cd -P -- "$SCRIPT_DIR"
 HOME="${HOME:-/home/${SUDO_USER:-$USER}}"
-
 VERSION="1.0.0"
-SCRIPT_DIR="$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-#──────────── Color & Style ────────────
+# Color & Style
 RED=$'\e[31m' GRN=$'\e[32m' YLW=$'\e[33m' DEF=$'\e[0m'
 BLU=$'\e[34m' MGN=$'\e[35m' CYN=$'\e[36m' BLD=$'\e[1m'
 LBLU=$'\e[38;5;117m' PNK=$'\e[38;5;218m' BWHT=$'\e[97m'
 
-#──────────── Helpers ──────────────────
+# Helpers
 has(){ command -v "$1" &>/dev/null; }
-die(){
-  printf '%b\n' "${RED}Error:${DEF} $*" >&2
-  exit 1
-}
+die(){ printf '%b\n' "${RED}Error:${DEF} $*" >&2; exit 1; }
 info(){ printf '%b\n' "${GRN}$*${DEF}"; }
 warn(){ printf '%b\n' "${YLW}$*${DEF}"; }
 msg(){ printf '%b\n' "${CYN}$*${DEF}"; }
 readonly CURL_OPTS=(-fLSs --http2 --proto '=https' --tlsv1.2 --compressed --connect-timeout 15 --retry 3 --retry-delay 2 --retry-max-time 60 --progress-bar)
-fetch(){
-  local url=$1 out=${2:-}
-  local opts=("${CURL_OPTS[@]}")
-  [[ -n $out ]] && opts+=(-o "$out")
-  curl "${opts[@]}" "$url"
-}
+fetch(){ local url=$1 out=${2:-}; local opts=("${CURL_OPTS[@]}"); [[ -n $out ]] && opts+=(-o "$out"); curl "${opts[@]}" "$url"; }
 
-#──────────── PORTED/ADAPTED FROM AKM ─────────────────
-LocalVersion(){ # e.g. LocalVersion linux
+# PORTED/ADAPTED FROM AKM
+LocalVersion(){
   local pkg="${1##*/}"
-  if has expac; then
-    expac -Q %v "$pkg" &>/dev/null || printf ''
-  else
-    pacman -Q "$pkg" &>/dev/null | awk '{print $2}'
-  fi
+  if has expac; then expac -Q %v "$pkg" &>/dev/null || printf ''
+  else pacman -Q "$pkg" &>/dev/null | awk '{print $2}'; fi
 }
-Exist(){
-  local version="$1"
-  [[ -n "$version" ]] && printf TRUE || printf FALSE
-}
-UniqueArr(){ # de-duplicate list, usage: UniqueArr arr
+Exist(){ local version="$1"; [[ -n $version ]] && printf TRUE || printf FALSE; }
+UniqueArr(){
   local -n arr="$1"
   local to=()
   local xx
-  # Use associative array for O(1) lookup instead of O(n²) nested loop
   declare -A seen
-  for xx in "${arr[@]}"; do
-    [[ -z ${seen[$xx]:-} ]] && to+=("$xx")
-    seen[$xx]=1
-  done
+  for xx in "${arr[@]}"; do [[ -z ${seen[$xx]:-} ]] && to+=("$xx"); seen[$xx]=1; done
   arr=("${to[@]}")
 }
-AvailableKernelsAndHeaders(){ # Print available kernels (Arch-family, CLI)
+AvailableKernelsAndHeaders(){
   if ! has expac; then die "expac required for kernel package detection"; fi
   local headers kernels kernel header
-  headers=($(expac -Ss '%r/%n' 'linux[-]*[^ pi]*-headers' \
-    | grep -Pv 'testing/linux-|linux-api-headers'))
-  for header in "${headers[@]}"; do
-    kernel="${header%-headers}"
-    printf "%s %s\n" "$kernel" "$header"
-  done
+  headers=($(expac -Ss '%r/%n' 'linux[-]*[^ pi]*-headers' | grep -Pv 'testing/linux-|linux-api-headers'))
+  for header in "${headers[@]}"; do kernel="${header%-headers}"; printf "%s %s\n" "$kernel" "$header"; done
   [[ -v akm_kernels_headers_user ]] && [[ ${#akm_kernels_headers_user[@]} -gt 0 ]] && printf "%s\n" "${akm_kernels_headers_user[@]}"
 }
 akm_load_config(){
   local conf=/etc/akm.conf
-  [[ -f "$conf" ]] || return
+  [[ -f $conf ]] || return
   # shellcheck disable=SC1090
   source "$conf"
   [[ -n ${KERNEL_HEADER_WITH_KERNEL:-} ]] && connect_header_with_kernel="$KERNEL_HEADER_WITH_KERNEL"
@@ -78,15 +57,11 @@ akm_load_config(){
   [[ -n ${AKM_PREFER_SMALL_WINDOW:-} ]] && small_font="$AKM_PREFER_SMALL_WINDOW"
 }
 parse_repo_type(){
-  if has pacman-conf && pacman-conf --repo-list | grep -q "\-testing$"; then
-    echo "Testing"
-  else
-    echo "Stable"
-  fi
+  if has pacman-conf && pacman-conf --repo-list | grep -q "\-testing$"; then echo "Testing"
+  else echo "Stable"; fi
 }
-#─────────────────────────────────────────────
 
-#──────────── Usage ────────────────────
+# Usage
 show_usage(){
   cat <<EOF
 ${GRN}Usage:${DEF} ${0##*/} [command] [options]
@@ -96,12 +71,12 @@ ${YLW}Commands:${DEF}
   ${CYN}tkg${DEF}             Build TKG (Frogging-Family) packages
   ${CYN}patches${DEF}         Manage and apply kernel patches
   ${CYN}list${DEF}            List available patches by version
-  ${CYN}kernels${DEF}         List available installed/packaged kernels [ADDED]
+  ${CYN}kernels${DEF}         List available installed/packaged kernels
   ${CYN}help${DEF}            Show this help message
 EOF
 }
 
-#───── Kernel/Package Info & List/Install (AKM-inspired) ─────
+# Kernel/Package Info & List
 list_kernels(){
   info "Available Kernel Packages (Arch-family style):"
   local kernels=()
@@ -121,33 +96,27 @@ list_kernels(){
   done
 }
 
-#──────────── Main Command Handling ────────────────
+# Stub functions (to be implemented)
+build_catgirl(){ warn "catgirl build not yet implemented"; }
+build_tkg(){ warn "tkg build not yet implemented"; }
+manage_patches(){ warn "patch management not yet implemented"; }
+list_patches(){ warn "patch listing not yet implemented"; }
+
+# Main Command Handling
 main(){
   cd "$SCRIPT_DIR"
   [[ $# -eq 0 ]] && show_usage && exit 1
   case $1 in
-    catgirl)
-      shift
-      build_catgirl "$@"
-      ;;
-    tkg)
-      shift
-      build_tkg "$@"
-      ;;
-    patches)
-      shift
-      manage_patches "$@"
-      ;;
+    catgirl) shift; build_catgirl "$@" ;;
+    tkg) shift; build_tkg "$@" ;;
+    patches) shift; manage_patches "$@" ;;
     compile) bash scripts/compile.sh ;;
     config) bash scripts/config.sh ;;
     fetch) bash scripts/fetch.sh ;;
     list) list_patches ;;
-    kernels) list_kernels ;; # ADDED
-    help | --help | -h) show_usage ;;
-    *)
-      die "Unknown command: $1"
-      show_usage
-      ;;
+    kernels) list_kernels ;;
+    help|--help|-h) show_usage ;;
+    *) die "Unknown command: $1"; show_usage ;;
   esac
 }
 main "$@"

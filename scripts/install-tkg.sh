@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-
+# shellcheck enable=all shell=bash source-path=SCRIPTDIR external-sources=true
 # -----------------------------------------------------------------------------
 # author : damachine (christkue79@gmail.com)
 # website: https://github.com/damachine
@@ -37,18 +37,16 @@
 #   Simply run this script using cURL:
 #   curl -fsSL https://raw.githubusercontent.com/damachine/tkginstaller/master/install.sh | bash
 # -----------------------------------------------------------------------------
-
-# shellcheck disable=SC2218 # Allow usage of printf with variable format strings
-set -e
-set -u
-set -o pipefail
+set -euo pipefail
 shopt -s nullglob globstar
+export LC_ALL=C
 IFS=$'\n\t'
+s=${BASH_SOURCE[0]}; [[ $s != /* ]] && s=$PWD/$s; cd -P -- "${s%/*}"
+has(){ command -v -- "$1" &>/dev/null; }
 
 # Initialize color and style (copied from tkginstaller)
 __init_style(){
-  _break=$'\n'
-  _reset=$'\033[0m'
+  _break=$'\n'; _reset=$'\033[0m'
   __color(){
     local r=${1:-255} g=${2:-255} b=${3:-255} idx=${4:-7}
     if [[ ${COLORTERM,,} == *truecolor* || ${COLORTERM,,} == *24bit* ]]; then
