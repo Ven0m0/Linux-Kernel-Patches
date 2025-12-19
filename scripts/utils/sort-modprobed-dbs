@@ -1,32 +1,20 @@
 #!/usr/bin/env bash
+# shellcheck enable=all shell=bash source-path=SCRIPTDIR external-sources=true
 # Sort and deduplicate modprobed database files
-# Usage: sort-modprobed-dbs [directory]
-#
-# If no directory specified, searches from current directory
-
 set -euo pipefail
 shopt -s nullglob globstar
+export LC_ALL=C
 IFS=$'\n\t'
-LC_ALL=C
+s=${BASH_SOURCE[0]}; [[ $s != /* ]] && s=$PWD/$s; cd -P -- "${s%/*}"
+has(){ command -v -- "$1" &>/dev/null; }
 
-# Search directory: argument or current directory
 SEARCH_DIR="${1:-$PWD}"
+[[ -d $SEARCH_DIR ]] || { echo "Error: Directory not found: $SEARCH_DIR" >&2; exit 1; }
 
-[[ -d "$SEARCH_DIR" ]] || {
-  echo "Error: Directory not found: $SEARCH_DIR" >&2
-  exit 1
-}
-
-# Find and sort all modprobed.db files
 found=0
 while IFS= read -r -d '' db; do
-  echo "Sorting: $db"
-  sort -u "$db" -o "$db.tmp" && mv "$db.tmp" "$db"
-  ((found++))
+  echo "Sorting: $db"; sort -u "$db" -o "$db.tmp" && mv "$db.tmp" "$db"; ((found++))
 done < <(find "$SEARCH_DIR" -type f -name "*modprobed.db" -print0)
 
-if [[ $found -eq 0 ]]; then
-  echo "No modprobed.db files found in: $SEARCH_DIR"
-else
-  echo "Sorted $found modprobed.db file(s)"
-fi
+if [[ $found -eq 0 ]]; then echo "No modprobed.db files found in: $SEARCH_DIR"
+else echo "Sorted $found modprobed.db file(s)"; fi

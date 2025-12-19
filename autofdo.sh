@@ -1,14 +1,24 @@
 #!/usr/bin/env bash
+# shellcheck enable=all shell=bash source-path=SCRIPTDIR external-sources=true
 set -euo pipefail
 shopt -s nullglob globstar
+export LC_ALL=C
 IFS=$'\n\t'
-LC_ALL=C LANG=C
-export LLVM=1 LLVM_IAS=1
+s=${BASH_SOURCE[0]}; [[ $s != /* ]] && s=$PWD/$s; cd -P -- "${s%/*}"
+has(){ command -v -- "$1" &>/dev/null; }
+date(){ local x="${1:-%d/%m/%y-%R}"; printf "%($x)T\n" '-1'; }
+
+# =============================================================================
+# AutoFDO-Optimized Kernel Build Script
+# Builds kernel with Profile-Guided Optimization using AutoFDO
+# =============================================================================
 readonly DIR="${HOME}/projects/kernel"
 readonly KERNELDIR="${DIR}/linux/linux-cachyos/linux-cachyos"
 readonly AUTOPROF="${KERNELDIR}/kernel-compilation.afdo"
 readonly VM_PATH="/usr/lib/modules/6.12.0-rc5-00015-gd89df38260bb/build/vmlinux"
 readonly NPROC=$(nproc)
+
+export LLVM=1 LLVM_IAS=1
 
 sudo -v
 mkdir -p "$KERNELDIR" && cd "$KERNELDIR" || exit
@@ -16,18 +26,17 @@ mkdir -p "$KERNELDIR" && cd "$KERNELDIR" || exit
 sudo pacman -S --needed --noconfirm perf cachyos-benchmarker llvm clang
 
 git clone -b 6.17/cachy https://github.com/CachyOS/linux.git && cd linux || exit
-zcat /proc/config.gz >.config
+zcat /proc/config.gz>.config
 make LLVM=1 LLVM_IAS=1 prepare
 scripts/config -e CONFIG_AUTOFDO_CLANG -e CONFIG_LTO_CLANG_THIN
 make LLVM=1 LLVM_IAS=1 pacman-pkg -j"$NPROC"
 
-# Only remove if pkgver is defined (from PKGBUILD context)
 pkgver="${pkgver:-unknown}"
 [[ $pkgver != unknown ]] && rm -f linux-upstream-api-headers-"$pkgver"
 sudo pacman -U linux-upstream{,-headers,-debug}-"$pkgver".tar.zst
 
 git clone https://github.com/cachyos/linux-cachyos && cd linux-cachyos/linux-cachyos || exit
-sudo sh -c "echo 0 >/proc/sys/kernel/kptr_restrict && echo 0 >/proc/sys/kernel/perf_event_paranoid"
+sudo sh -c "echo 0>/proc/sys/kernel/kptr_restrict && echo 0>/proc/sys/kernel/perf_event_paranoid"
 cachyos-benchmarker "$KERNELDIR"
 
 printf 'Running sysbench: CPU, Memory, I/O...\n'
