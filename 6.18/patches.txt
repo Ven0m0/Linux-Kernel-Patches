@@ -1,34 +1,34 @@
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.18/all/0001-cachyos-base-all.patch
-https://github.com/CachyOS/kernel-patches/blob/master/6.18/misc/0001-clang-polly.patch
-https://github.com/CachyOS/kernel-patches/blob/master/6.18/misc/dkms-clang.patch
-https://github.com/CachyOS/kernel-patches/blob/master/6.18/0007-crypto.patch
-https://github.com/CachyOS/kernel-patches/blob/master/6.18/0008-fixes.patch
-https://github.com/CachyOS/kernel-patches/blob/master/6.18/0009-intel-pstate.patch
-https://github.com/CachyOS/kernel-patches/blob/master/6.18/0010-sched-ext.patch
-https://github.com/CachyOS/kernel-patches/blob/master/6.18/sched/0001-bore-cachy.patch
+https://raw.githubusercontent.com/CachyOS/kernel-patches/master/6.18/misc/0001-clang-polly.patch
+https://raw.githubusercontent.com/CachyOS/kernel-patches/master/6.18/misc/dkms-clang.patch
+https://raw.githubusercontent.com/CachyOS/kernel-patches/master/6.18/0007-crypto.patch
+https://raw.githubusercontent.com/CachyOS/kernel-patches/master/6.18/0008-fixes.patch
+https://raw.githubusercontent.com/CachyOS/kernel-patches/master/6.18/0009-intel-pstate.patch
+https://raw.githubusercontent.com/CachyOS/kernel-patches/master/6.18/0010-sched-ext.patch
+https://raw.githubusercontent.com/CachyOS/kernel-patches/master/6.18/sched/0001-bore-cachy.patch
 
 # Clearlinux
-https://github.com/clearlinux-pkgs/linux/blob/main/0102-increase-the-ext4-default-commit-age.patch
-https://github.com/clearlinux-pkgs/linux/blob/main/0162-extra-optmization-flags.patch
-https://github.com/clearlinux-pkgs/linux/blob/main/0164-KVM-VMX-make-vmx-init-a-late-init-call-to-get-to-ini.patch
-https://github.com/clearlinux-pkgs/linux/blob/main/0166-sched-fair-remove-upper-limit-on-cpu-number.patch
-https://github.com/clearlinux-pkgs/linux/blob/main/0167-net-sock-increase-default-number-of-_SK_MEM_PACKETS-.patch
-https://github.com/clearlinux-pkgs/linux/blob/main/0169-mm-mincore-improve-performance-by-adding-an-unlikely.patch
-https://github.com/clearlinux-pkgs/linux/blob/main/0170-sched-Add-unlikey-branch-hints-to-several-system-cal.patch
-https://github.com/clearlinux-pkgs/linux/blob/main/0171-kcmp-improve-performance-adding-an-unlikely-hint-to-.patch
-https://github.com/clearlinux-pkgs/linux/blob/main/0173-cpuidle-psd-add-power-sleep-demotion-prevention-for-.patch
-https://github.com/clearlinux-pkgs/linux/blob/main/0174-memcg-increase-MEMCG_CHARGE_BATCH-to-128.patch
+https://raw.githubusercontent.com/clearlinux-pkgs/linux/main/0102-increase-the-ext4-default-commit-age.patch
+https://raw.githubusercontent.com/clearlinux-pkgs/linux/main/0162-extra-optmization-flags.patch
+https://raw.githubusercontent.com/clearlinux-pkgs/linux/main/0164-KVM-VMX-make-vmx-init-a-late-init-call-to-get-to-ini.patch
+https://raw.githubusercontent.com/clearlinux-pkgs/linux/main/0166-sched-fair-remove-upper-limit-on-cpu-number.patch
+https://raw.githubusercontent.com/clearlinux-pkgs/linux/main/0167-net-sock-increase-default-number-of-_SK_MEM_PACKETS-.patch
+https://raw.githubusercontent.com/clearlinux-pkgs/linux/main/0169-mm-mincore-improve-performance-by-adding-an-unlikely.patch
+https://raw.githubusercontent.com/clearlinux-pkgs/linux/main/0170-sched-Add-unlikey-branch-hints-to-several-system-cal.patch
+https://raw.githubusercontent.com/clearlinux-pkgs/linux/main/0171-kcmp-improve-performance-adding-an-unlikely-hint-to-.patch
+https://raw.githubusercontent.com/clearlinux-pkgs/linux/main/0173-cpuidle-psd-add-power-sleep-demotion-prevention-for-.patch
+https://raw.githubusercontent.com/clearlinux-pkgs/linux/main/0174-memcg-increase-MEMCG_CHARGE_BATCH-to-128.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0175-readdir-add-unlikely-hint-on-len-check.patch
 
-https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/polly.patch
-https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/makefile-warning-clang21.patch
-https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/io_uring.patch
-https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/hid_dbg.patch
-https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/dma.patch
-https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/btrfs.patch
-https://github.com/babiulep/my-kernel-patches/blob/main/NVIDIA/6.18/in_irq.patch
-https://github.com/babiulep/my-kernel-patches/blob/main/AMNEZIAWG/blake2s.patch
-https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/zstd.patch
+https://raw.githubusercontent.com/babiulep/my-kernel-patches/main/PATCHES/polly.patch
+https://raw.githubusercontent.com/babiulep/my-kernel-patches/main/PATCHES/makefile-warning-clang21.patch
+https://raw.githubusercontent.com/babiulep/my-kernel-patches/main/PATCHES/io_uring.patch
+https://raw.githubusercontent.com/babiulep/my-kernel-patches/main/PATCHES/hid_dbg.patch
+https://raw.githubusercontent.com/babiulep/my-kernel-patches/main/PATCHES/dma.patch
+https://raw.githubusercontent.com/babiulep/my-kernel-patches/main/PATCHES/btrfs.patch
+https://raw.githubusercontent.com/babiulep/my-kernel-patches/main/NVIDIA/6.18/in_irq.patch
+https://raw.githubusercontent.com/babiulep/my-kernel-patches/main/AMNEZIAWG/blake2s.patch
+https://raw.githubusercontent.com/babiulep/my-kernel-patches/main/PATCHES/zstd.patch
 
 # Gaming and Performance patches
 # GloriousEggroll pollrate patch - USB device polling rate improvements
