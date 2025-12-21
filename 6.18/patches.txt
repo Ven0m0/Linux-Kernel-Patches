@@ -20,15 +20,22 @@ https://raw.githubusercontent.com/clearlinux-pkgs/linux/main/0173-cpuidle-psd-ad
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/main/0174-memcg-increase-MEMCG_CHARGE_BATCH-to-128.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0175-readdir-add-unlikely-hint-on-len-check.patch
 
-https://raw.githubusercontent.com/babiulep/my-kernel-patches/main/PATCHES/polly.patch
-https://raw.githubusercontent.com/babiulep/my-kernel-patches/main/PATCHES/makefile-warning-clang21.patch
-https://raw.githubusercontent.com/babiulep/my-kernel-patches/main/PATCHES/io_uring.patch
-https://raw.githubusercontent.com/babiulep/my-kernel-patches/main/PATCHES/hid_dbg.patch
-https://raw.githubusercontent.com/babiulep/my-kernel-patches/main/PATCHES/dma.patch
-https://raw.githubusercontent.com/babiulep/my-kernel-patches/main/PATCHES/btrfs.patch
-https://raw.githubusercontent.com/babiulep/my-kernel-patches/main/NVIDIA/6.18/in_irq.patch
-https://raw.githubusercontent.com/babiulep/my-kernel-patches/main/AMNEZIAWG/blake2s.patch
-https://raw.githubusercontent.com/babiulep/my-kernel-patches/main/PATCHES/zstd.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/01-debian.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/02-ttm.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/03-dma.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/04-makefile-warning-clang21.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/06-zstd.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/07-block.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/08-io_uring.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/09-polly.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/11-hid_dbg.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/13-loop_block.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/14-context_switching.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/15-cache-aware_v2.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/16-slab.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/NVIDIA/6.18/in_irq.patch
+
+
 
 # Gaming and Performance patches
 # GloriousEggroll pollrate patch - USB device polling rate improvements
