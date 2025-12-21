@@ -1,6 +1,9 @@
-https://github.com/babiulep/my-kernel-patches/blob/main/NVIDIA/6.19/state.patch
-https://github.com/babiulep/my-kernel-patches/blob/main/NVIDIA/6.19/dma.patch
-https://github.com/babiulep/my-kernel-patches/blob/main/NVIDIA/6.19/drm_error.patch
 
 # ZRAM-IR - Improved ZRAM read performance
 https://raw.githubusercontent.com/firelzrd/zram-ir/main/patches/0001-linux6.16.0-zram-ir-1.2.patch zram-ir-1.2.patch
+
+https://github.com/babiulep/my-kernel-patches/blob/main/NVIDIA/6.19/590.44.01.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.19/polly.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.19/01-debian.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.19/02-ttm.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.19/zstd.patch
