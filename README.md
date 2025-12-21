@@ -74,14 +74,13 @@ The Catgirl Edition provides aggressive performance optimizations:
 ```bash
 # Build with interactive customization
 ./kernel-builder catgirl
-
 # Or directly with makepkg
 cd build/catgirl-edition
 makepkg -scf --cleanbuild --skipchecksums
 ```
 
 **Key Features:**
-- Multiple CPU schedulers: BORE (recommended), EEVDF, BMQ, RT
+- Multiple CPU schedulers: BORE (recommended), EEVDF, BMQ, RT | [Benchmarks](https://github.com/hamadmarri/benchmarks)
 - Clang LTO and -O3 optimizations
 - TCP BBRv3 congestion control
 - Modprobed-db support for minimal kernel size
@@ -208,6 +207,8 @@ This repository aggregates patches from the following upstream sources:
 - [Sunlight Linux](https://github.com/sunlightlinux/linux-sunlight) - System call optimizations
 - [openSUSE kernel-source](https://github.com/openSUSE/kernel-source) - Enterprise patches
 - [build-ubuntu-kernel](https://github.com/arvin-foroutan/build-ubuntu-kernel) - Ubuntu kernel builds
+- [kcompressd](https://github.com/firelzrd/kcompressd-unofficial)
+- [ECHO scheduler](https://github.com/hamadmarri/ECHO-CPU-Scheduler)
 - [zram-ir](https://github.com/firelzrd/zram-ir) - ZRAM improvements
 - [babiulep](https://github.com/babiulep/my-kernel-patches)
 
