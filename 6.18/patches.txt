@@ -22,6 +22,19 @@ https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0175-rea
 
 https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/01-debian.patch
 https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/02-ttm.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/03-dma.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/04-makefile-warning-clang21.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/06-zstd.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/07-block.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/08-io_uring.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/09-polly.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/11-hid_dbg.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/13-loop_block.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/14-context_switching.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/15-cache-aware_v2.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/16-slab.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/NVIDIA/6.18/in_irq.patch
+
 
 
 # Gaming and Performance patches
