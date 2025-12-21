@@ -20,15 +20,9 @@ https://github.com/clearlinux-pkgs/linux/blob/main/0173-cpuidle-psd-add-power-sl
 https://github.com/clearlinux-pkgs/linux/blob/main/0174-memcg-increase-MEMCG_CHARGE_BATCH-to-128.patch
 https://raw.githubusercontent.com/clearlinux-pkgs/linux/refs/heads/main/0175-readdir-add-unlikely-hint-on-len-check.patch
 
-https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/polly.patch
-https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/makefile-warning-clang21.patch
-https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/io_uring.patch
-https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/hid_dbg.patch
-https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/dma.patch
-https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/btrfs.patch
-https://github.com/babiulep/my-kernel-patches/blob/main/NVIDIA/6.18/in_irq.patch
-https://github.com/babiulep/my-kernel-patches/blob/main/AMNEZIAWG/blake2s.patch
-https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/zstd.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/01-debian.patch
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.18/02-ttm.patch
+
 
 # Gaming and Performance patches
 # GloriousEggroll pollrate patch - USB device polling rate improvements
