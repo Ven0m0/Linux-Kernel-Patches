@@ -1,30 +1,30 @@
-https://github.com/Ven0m0/kernel-patches/blob/master/6.17-rc/adios-iosched-default-on-patches-v9/0001-iosched-6.17-introduce-ADIOS-I-O-scheduler.patch
-https://github.com/Ven0m0/kernel-patches/blob/master/6.17-rc/arch-patches-v3/0001-arch-patches.patch
+https://raw.githubusercontent.com/Ven0m0/kernel-patches/master/6.17-rc/adios-iosched-default-on-patches-v9/0001-iosched-6.17-introduce-ADIOS-I-O-scheduler.patch
+https://raw.githubusercontent.com/Ven0m0/kernel-patches/master/6.17-rc/arch-patches-v3/0001-arch-patches.patch
 https://github.com/Ven0m0/kernel-patches/tree/master/6.17-rc/arch-patches-v3-sep
 
-https://github.com/Ven0m0/kernel-patches/blob/master/6.17-rc/bbr3-patches/0001-tcp-bbr3-add-BBRv3-congestion-control.patch
+https://raw.githubusercontent.com/Ven0m0/kernel-patches/master/6.17-rc/bbr3-patches/0001-tcp-bbr3-add-BBRv3-congestion-control.patch
 # Bore
-https://github.com/Ven0m0/kernel-patches/blob/master/6.17-rc/bore-dev-smt-cores-patches-v2/0001-bore-smt-cores-patches.patch
-https://github.com/Ven0m0/kernel-patches/blob/master/6.17-rc/cachyos-fixes-patches-v4/0001-cachyos-fixes-patches.patch
+https://raw.githubusercontent.com/Ven0m0/kernel-patches/master/6.17-rc/bore-dev-smt-cores-patches-v2/0001-bore-smt-cores-patches.patch
+https://raw.githubusercontent.com/Ven0m0/kernel-patches/master/6.17-rc/cachyos-fixes-patches-v4/0001-cachyos-fixes-patches.patch
 
 # Clang (last one might be missing from cachyos kernel last I checked)
 https://github.com/Ven0m0/kernel-patches/tree/master/6.17-rc/clang-patches-sep
 
 
-https://github.com/Ven0m0/kernel-patches/blob/master/6.17-rc/cpuidle-patches/0001-cpuidle-Prefer-teo-over-menu-governor.patch
-https://github.com/Ven0m0/kernel-patches/blob/master/6.17-rc/futex-patches/0001-futex-6.17-Add-entry-point-for-FUTEX_WAIT_MULTIPLE-o.patch
+https://raw.githubusercontent.com/Ven0m0/kernel-patches/master/6.17-rc/cpuidle-patches/0001-cpuidle-Prefer-teo-over-menu-governor.patch
+https://raw.githubusercontent.com/Ven0m0/kernel-patches/master/6.17-rc/futex-patches/0001-futex-6.17-Add-entry-point-for-FUTEX_WAIT_MULTIPLE-o.patch
 
-https://github.com/Ven0m0/kernel-patches/blob/master/6.17-rc/le9uo-default-on-patches/0001-mm-6.17-add-le9uo.patch
-https://github.com/Ven0m0/kernel-patches/blob/master/6.17-rc/zstd-dev-patches-v2/0001-zstd-dev-patches.patch
+https://raw.githubusercontent.com/Ven0m0/kernel-patches/master/6.17-rc/le9uo-default-on-patches/0001-mm-6.17-add-le9uo.patch
+https://raw.githubusercontent.com/Ven0m0/kernel-patches/master/6.17-rc/zstd-dev-patches-v2/0001-zstd-dev-patches.patch
 
 https://github.com/CachyOS/kernel-patches/tree/master/6.17
-https://github.com/firelzrd/zram-ir/blob/main/patches/0001-linux6.16.0-zram-ir-1.2.patch
+https://raw.githubusercontent.com/firelzrd/zram-ir/main/patches/0001-linux6.16.0-zram-ir-1.2.patch
 
 
 https://raw.githubusercontent.com/firelzrd/kcompressd-unofficial/main/patches/stable/0001-linux6.17-kcompressd-unofficial-0.5.patch
 
-https://github.com/firelzrd/le9uo/blob/main/le9uo_patches/0002-vm.workingset_protection-On-by-default.patch
-https://github.com/firelzrd/le9uo/blob/main/le9uo_patches/stable/base/0001-linux6.16-le9uo-1.15.patch
+https://raw.githubusercontent.com/firelzrd/le9uo/main/le9uo_patches/0002-vm.workingset_protection-On-by-default.patch
+https://raw.githubusercontent.com/firelzrd/le9uo/main/le9uo_patches/stable/base/0001-linux6.16-le9uo-1.15.patch
 
 
 
