@@ -5,7 +5,8 @@ https://raw.githubusercontent.com/firelzrd/bore-scheduler/refs/heads/main/patche
 
 # TODO: check which patches are included in 0001-cachyos-base-all.patch already
 # https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/all/0001-cachyos-base-all.patch
-https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/all/0001-cachyos-base-all.patch
+# https://github.com/CachyOS/kernel-patches/blob/master/6.12/sched-dev/0001-bore-cachy.patch
+# https://github.com/CachyOS/kernel-patches/blob/master/6.12/sched/0001-prjc-cachy.patch
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/0002-bbr3.patch
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/0003-cachy.patch
 https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/6.12/misc/0001-clang-polly.patch
