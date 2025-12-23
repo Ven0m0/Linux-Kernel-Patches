@@ -6,7 +6,27 @@ https://raw.githubusercontent.com/babiulep/my-kernel-patches/main/NVIDIA/6.19/dr
 https://raw.githubusercontent.com/firelzrd/zram-ir/main/patches/0001-linux6.16.0-zram-ir-1.2.patch zram-ir-1.2.patch
 
 https://github.com/babiulep/my-kernel-patches/blob/main/NVIDIA/6.19/590.44.01.patch
-https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.19/polly.patch
+
 https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.19/01-debian.patch
 https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.19/02-ttm.patch
 https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.19/zstd.patch
+
+# TODO: check and validate polly patches
+https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.19/polly.patch
+https://github.com/CachyOS/kernel-patches/blob/master/6.19/misc/0001-clang-polly.patch
+
+# TODO: check which patches are included in 0001-cachyos-base-all.patch already
+https://github.com/CachyOS/kernel-patches/blob/master/6.19/all/0001-cachyos-base-all.patch
+
+https://github.com/CachyOS/kernel-patches/blob/master/6.19/0002-autofdo.patch
+https://github.com/CachyOS/kernel-patches/blob/master/6.19/0003-bbr3.patch
+https://github.com/CachyOS/kernel-patches/blob/master/6.19/0004-block.patch
+https://github.com/CachyOS/kernel-patches/blob/master/6.19/0005-cachy.patch
+https://github.com/CachyOS/kernel-patches/blob/master/6.19/0006-fixes.patch
+https://github.com/CachyOS/kernel-patches/blob/master/6.19/0007-vmscape.patch
+https://github.com/CachyOS/kernel-patches/blob/master/6.19/sched/0001-bore-cachy.patch
+https://github.com/CachyOS/kernel-patches/blob/master/6.19/misc/dkms-clang.patch
+https://github.com/CachyOS/kernel-patches/blob/master/6.19/misc/0001-acpi-call.patch
+https://github.com/CachyOS/kernel-patches/blob/master/6.19/misc/nvidia/0001-Enable-atomic-kernel-modesetting-by-default.patch
+https://github.com/CachyOS/kernel-patches/blob/master/6.19/misc/nvidia/0002-Add-IBT-support.patch
+https://github.com/CachyOS/kernel-patches/blob/master/6.19/misc/nvidia/0003-Fix-compile-for-6.19.patch
