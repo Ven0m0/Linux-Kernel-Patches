@@ -1,9 +1,4 @@
-sudo apt-get install -y \
-  bc bison dwarves \
-  flex libssl-dev \
-  libc6-dev libelf-dev \
-  libncurses-dev libncurses5-dev libncursesw5-dev \
-  git rsync make \
-  gcc g++ lld \
-  zstd liblz4-tool pigz \
-  libclang-dev llvm-19 clang-19 libpolly-19-dev \
+sudo apt-get install -y bc bison dwarves flex libssl-dev \
+  libc6-dev libelf-dev libncurses-dev libncurses5-dev libncursesw5-dev \
+  git rsync make gcc g++ lld zstd liblz4-tool pigz \
+  libclang-dev llvm-19 clang-19 libpolly-19-dev
