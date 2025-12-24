@@ -480,20 +480,19 @@ fi
 # [^2]: Or parallization units. however you want to call it.
 : "${_maximum_cpus:=default}"
 
-# Disable FUSE support
+# FUSE support configuration
 #
 # FUSE allows running a custom filesystem in userspace.
 #
 # ntfs-3g, osu!lazer and anything else that needs to implement a filesystem usually needs this.
 #
-# FUSE is quite a complex component and can be disabled provided that no applications
-# use it, in order to save RAM and reduce the size of the kernel
+# FUSE is quite a complex component. You can configure it as:
+#   - "builtin": Built into the kernel (always available, uses more kernel memory)
+#   - "module": Built as a loadable module (only loaded when needed, saves RAM)
+#   - "disabled": Completely disabled (maximum size/memory savings)
 #
-# TODO: maybe offer the possibility to build FUSE as a module instead of disabling it fully, so it is
-#       only loaded when needed?
-#
-# If unsure, select no
-: "${_disable_fuse:=no}"
+# If unsure, select "module"
+: "${_fuse_support:=module}"
 
 # Disable module decompression in kernel space
 #
@@ -1286,10 +1285,24 @@ prepare() {
         *) scripts/config -d MAXSMP --set-val NR_CPUS $_maximum_cpus;;
     esac
 
-    if [ "$_disable_fuse" = "yes" ]; then
-        echo "Disable FUSE"
-        scripts/config -d FUSE_FS
-    fi
+    case "$_fuse_support" in
+        builtin)
+            echo "Configure FUSE as built-in"
+            scripts/config -e FUSE_FS -y FUSE_FS
+            ;;
+        module)
+            echo "Configure FUSE as module"
+            scripts/config -e FUSE_FS -m FUSE_FS
+            ;;
+        disabled)
+            echo "Disable FUSE"
+            scripts/config -d FUSE_FS
+            ;;
+        *)
+            echo "Warning: Invalid _fuse_support value '$_fuse_support', using module"
+            scripts/config -e FUSE_FS -m FUSE_FS
+            ;;
+    esac
 
     if [ "$_disable_kernel_module_decompress" = "yes" ]; then
         echo "Disable kernel module decompression"
