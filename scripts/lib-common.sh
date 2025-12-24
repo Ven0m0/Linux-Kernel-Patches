@@ -65,8 +65,26 @@ readonly BWHT=$'\e[97m'
 # HELPER FUNCTIONS
 # =============================================================================
 
-# Check if command exists
-has(){ command -v "$1" &>/dev/null; }
+# Command existence cache for performance
+declare -A __HAS_CACHE=()
+
+# Check if command exists (cached for performance)
+has(){
+  local cmd=$1
+  # Return cached result if available
+  if [[ -n ${__HAS_CACHE[$cmd]:-} ]]; then
+    return "${__HAS_CACHE[$cmd]}"
+  fi
+
+  # Check and cache result
+  if command -v "$cmd" &>/dev/null; then
+    __HAS_CACHE[$cmd]=0
+    return 0
+  else
+    __HAS_CACHE[$cmd]=1
+    return 1
+  fi
+}
 
 # Print error and exit
 die(){

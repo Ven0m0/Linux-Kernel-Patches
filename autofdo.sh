@@ -25,7 +25,7 @@ mkdir -p "$KERNELDIR" && cd "$KERNELDIR" || exit
 
 sudo pacman -S --needed --noconfirm perf cachyos-benchmarker llvm clang
 
-git clone -b 6.17/cachy https://github.com/CachyOS/linux.git && cd linux || exit
+git clone --depth=1 --single-branch -b 6.17/cachy https://github.com/CachyOS/linux.git && cd linux || exit
 zcat /proc/config.gz>.config
 make LLVM=1 LLVM_IAS=1 prepare
 scripts/config -e CONFIG_AUTOFDO_CLANG -e CONFIG_LTO_CLANG_THIN
@@ -35,18 +35,31 @@ pkgver="${pkgver:-unknown}"
 [[ $pkgver != unknown ]] && rm -f linux-upstream-api-headers-"$pkgver"
 sudo pacman -U linux-upstream{,-headers,-debug}-"$pkgver".tar.zst
 
-git clone https://github.com/cachyos/linux-cachyos && cd linux-cachyos/linux-cachyos || exit
+git clone --depth=1 --single-branch https://github.com/cachyos/linux-cachyos && cd linux-cachyos/linux-cachyos || exit
 sudo sh -c "echo 0>/proc/sys/kernel/kptr_restrict && echo 0>/proc/sys/kernel/perf_event_paranoid"
 cachyos-benchmarker "$KERNELDIR"
 
-printf 'Running sysbench: CPU, Memory, I/O...\n'
-sysbench cpu --time=30 --cpu-max-prime=50000 --threads="$NPROC" run
-sysbench memory --memory-block-size=1M --memory-total-size=16G run
-sysbench memory --memory-block-size=1M --memory-total-size=16G --memory-oper=read --num-threads=16 run
+printf 'Running sysbench: CPU, Memory, I/O (parallelized)...\n'
+
+# Run CPU and memory benchmarks in parallel (independent workloads)
+sysbench cpu --time=30 --cpu-max-prime=50000 --threads="$NPROC" run &
+pid_cpu=$!
+sysbench memory --memory-block-size=1M --memory-total-size=16G run &
+pid_mem1=$!
+sysbench memory --memory-block-size=1M --memory-total-size=16G --memory-oper=read --num-threads=16 run &
+pid_mem2=$!
+
+# Wait for parallel benchmarks to complete
+wait $pid_cpu $pid_mem1 $pid_mem2
+printf 'CPU and memory benchmarks completed.\n'
+
+# I/O benchmarks must run sequentially (prepare → test → cleanup)
+printf 'Running I/O benchmarks (sequential)...\n'
 sysbench fileio --file-total-size=5G --file-num=5 prepare
 sysbench fileio --file-total-size=5G --file-num=5 --file-fsync-freq=0 --file-test-mode=rndrd --file-block-size=4K run
 sysbench fileio --file-total-size=5G --file-num=5 --file-fsync-freq=0 --file-test-mode=seqwr --file-block-size=1M run
 sysbench fileio --file-total-size=5G --file-num=5 cleanup
+printf 'I/O benchmarks completed.\n'
 
 perf record --pfm-events BR_INST_RETIRED.NEAR_TAKEN:k -a -N -b -c 500009 -o kernel.data -- time makepkg -sfci --skipinteg
 ./create_llvm_prof --binary="$VM_PATH" --profile="${KERNELDIR}/kernel.data" --format=extbinary --out="$AUTOPROF"

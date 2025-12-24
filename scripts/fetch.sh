@@ -42,7 +42,8 @@ fetch_list(){
       dest=${BASH_REMATCH[2]}
     else
       src=$line
-      dest=$(basename "$line")
+      # Use parameter expansion instead of basename subprocess
+      dest="${line##*/}"
     fi
     srcs+=("$src")
     dests+=("${dir}/${dest}")
