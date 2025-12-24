@@ -1,11 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck enable=all shell=bash source-path=SCRIPTDIR external-sources=true
-set -euo pipefail
-shopt -s nullglob globstar
-export LC_ALL=C
-IFS=$'\n\t'
-s=${BASH_SOURCE[0]}; [[ $s != /* ]] && s=$PWD/$s; cd -P -- "${s%/*}"
-has(){ command -v -- "$1" &>/dev/null; }
+# shellcheck source=./lib-common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib-common.sh"
 
 declare -A lists=(
   ["https://raw.githubusercontent.com/Ven0m0/Linux-Kernel-Patches/main/6.17/patches.txt"]="lists/6.17"
@@ -16,27 +12,67 @@ readonly MAX_PARALLEL=${MAX_PARALLEL:-4}
 
 fetch_file(){
   local src="$1" dest="$2"
-  if curl -fsSL "$src" -o "${dest}.tmp" &>/dev/null; then mv "${dest}.tmp" "$dest"
-  else echo "Failed: $src" >&2; rm -f "${dest}.tmp"; return 1; fi
+  debug "Fetching: $src -> $dest"
+  if fetch "$src" "${dest}.tmp" &>/dev/null; then
+    mv "${dest}.tmp" "$dest"
+    info "✓ $(basename "$dest")"
+    return 0
+  else
+    warn "✗ Failed: $(basename "$src")"
+    rm -f "${dest}.tmp"
+    return 1
+  fi
 }
 
 fetch_list(){
   local url="$1" dir="$2" list
-  mkdir -p "$dir"
-  list=$(curl -fsSL "$url") || { echo "Failed: $url" >&2; return 1; }
-  local -a pids=()
-  local job_count=0
+  ensure_dir "$dir"
+
+  info "Fetching patch list from: $url"
+  list=$(fetch "$url") || { warn "Failed to fetch list: $url"; return 1; }
+
+  local -a files=() srcs=() dests=()
+  local line src dest
+
+  # Parse list and build arrays
   while IFS= read -r line; do
     [[ $line =~ ^[[:space:]]*#|^[[:space:]]*$ ]] && continue
-    local src dest
-    if [[ $line =~ ^([^[:space:]]+)[[:space:]]+([^[:space:]]+)$ ]]; then src=${BASH_REMATCH[1]}; dest=${BASH_REMATCH[2]}
-    else src=$line; dest=$(basename "$line"); fi
-    fetch_file "$src" "${dir}/${dest}" &
-    pids+=($!)
-    ((job_count++))
-    if ((job_count>=MAX_PARALLEL)); then wait "${pids[@]}"; pids=(); job_count=0; fi
+    if [[ $line =~ ^([^[:space:]]+)[[:space:]]+([^[:space:]]+)$ ]]; then
+      src=${BASH_REMATCH[1]}
+      dest=${BASH_REMATCH[2]}
+    else
+      src=$line
+      dest=$(basename "$line")
+    fi
+    srcs+=("$src")
+    dests+=("${dir}/${dest}")
   done <<<"$list"
-  [[ ${#pids[@]} -gt 0 ]] && wait "${pids[@]}"
+
+  # Download in parallel with rolling window
+  local idx=0 active=0
+  local -a pids=()
+
+  while ((idx < ${#srcs[@]})) || ((${#pids[@]} > 0)); do
+    # Start new jobs up to MAX_PARALLEL
+    while ((idx < ${#srcs[@]}) && (${#pids[@]} < MAX_PARALLEL)); do
+      fetch_file "${srcs[$idx]}" "${dests[$idx]}" &
+      pids+=($!)
+      ((idx++))
+    done
+
+    # Wait for any job to complete (more efficient than waiting for all)
+    if ((${#pids[@]} > 0)); then
+      wait -n "${pids[@]}" 2>/dev/null || true
+      # Remove completed PID from array
+      local -a new_pids=()
+      for pid in "${pids[@]}"; do
+        kill -0 "$pid" 2>/dev/null && new_pids+=("$pid")
+      done
+      pids=("${new_pids[@]}")
+    fi
+  done
+
+  info "Completed fetching ${#srcs[@]} files to $dir"
 }
 
 for url in "${!lists[@]}"; do fetch_list "$url" "${lists[$url]}"; done
