@@ -62,16 +62,46 @@ list_kernels(){
   info "Available Kernel Packages (Arch-family style):"
   local kernels=()
   mapfile -t kernels < <(AvailableKernelsAndHeaders)
-  local item ix=0
+
+  # Batch all package queries to avoid repeated subprocess spawning
+  local -a all_packages=()
+  local item
+  for item in "${kernels[@]}"; do
+    set -- $item
+    all_packages+=("$1" "$2")
+  done
+
+  # Query all versions in a single expac call
+  declare -A version_map=()
+  if [[ ${#all_packages[@]} -gt 0 ]]; then
+    local pkg_versions
+    if has expac; then
+      pkg_versions=$(expac -Q '%n:%v' "${all_packages[@]}" 2>/dev/null || true)
+    elif has pacman; then
+      pkg_versions=$(pacman -Q "${all_packages[@]}" 2>/dev/null | awk '{print $1":"$2}' || true)
+    fi
+
+    while IFS=: read -r pkg ver; do
+      [[ -n $pkg ]] && version_map[$pkg]=$ver
+    done <<<"$pkg_versions"
+  fi
+
+  # Display results
+  local ix=0
   for item in "${kernels[@]}"; do
     ((ix++))
     set -- $item
-    printf "  %s) %s\n     %s\n" "$ix" "$1" "$2"
-    v1=$(LocalVersion "$1")
-    v2=$(LocalVersion "$2")
-    printf "     %s: %s\n     %s: %s\n" "$1" "${v1:-not installed}" "$2" "${v2:-not installed}"
-    exist1=$(Exist "$v1")
-    exist2=$(Exist "$v2")
+    local kernel=$1 header=$2
+    local v1=${version_map[$kernel]:-}
+    local v2=${version_map[$header]:-}
+
+    printf "  %s) %s\n     %s\n" "$ix" "$kernel" "$header"
+    printf "     %s: %s\n     %s: %s\n" "$kernel" "${v1:-not installed}" "$header" "${v2:-not installed}"
+
+    # Inline existence check to avoid function call overhead
+    local exist1="FALSE" exist2="FALSE"
+    [[ -n $v1 ]] && exist1="TRUE"
+    [[ -n $v2 ]] && exist2="TRUE"
     printf "     Installed: %s (kernel) %s (headers)\n" "$exist1" "$exist2"
     echo
   done

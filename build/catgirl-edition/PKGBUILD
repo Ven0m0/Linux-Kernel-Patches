@@ -28,11 +28,30 @@
 #   makepkg -scf --cleanbuild --skipchecksums
 # =============================================================================
 
-# Helper functions to fetch latest kernel version
+# Helper functions to fetch latest kernel version with caching
+_cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/catgirl-kernel"
+_cache_ttl=86400  # 24 hours in seconds
+
+# Check if cache is valid (exists and not expired)
+_is_cache_valid() {
+    local cache_file="$1"
+    [[ -f "$cache_file" ]] || return 1
+    local cache_age=$(( $(date +%s) - $(stat -c %Y "$cache_file" 2>/dev/null || echo 0) ))
+    [[ $cache_age -lt $_cache_ttl ]]
+}
+
 _get_latest_cachyos_major() {
+    local cache_file="$_cache_dir/major_version"
+
+    # Return cached version if valid
+    if _is_cache_valid "$cache_file"; then
+        cat "$cache_file"
+        return 0
+    fi
+
     # Fetch all major.minor versions from CachyOS kernel-patches repo
     local versions
-    versions=$(curl -fsSL "https://api.github.com/repos/CachyOS/kernel-patches/contents/" 2>/dev/null | \
+    versions=$(curl -fsSL --max-time 10 "https://api.github.com/repos/CachyOS/kernel-patches/contents/" 2>/dev/null | \
         grep -oP '"name":\s*"\K[0-9]+\.[0-9]+(?=")' | sort -V)
 
     if [ -z "$versions" ]; then
@@ -42,37 +61,57 @@ _get_latest_cachyos_major() {
 
     # Try to find the latest version with a stable kernel release
     local stable_releases
-    stable_releases=$(curl -fsSL "https://www.kernel.org/releases.json" 2>/dev/null | \
+    stable_releases=$(curl -fsSL --max-time 10 "https://www.kernel.org/releases.json" 2>/dev/null | \
         grep -oP "\"version\":\s*\"\K[0-9]+\.[0-9]+\.[0-9]+" || echo "")
 
+    local result=""
     # Iterate from newest to oldest CachyOS version
     while IFS= read -r ver; do
         # Check if this version has a stable release on kernel.org
         if echo "$stable_releases" | grep -q "^${ver}\."; then
-            echo "$ver"
-            return
+            result="$ver"
+            break
         fi
     done <<< "$(echo "$versions" | tac)"
 
     # If no stable release found, return the latest CachyOS version anyway
-    echo "$versions" | tail -1
+    [[ -z "$result" ]] && result=$(echo "$versions" | tail -1)
+
+    # Cache the result
+    mkdir -p "$_cache_dir"
+    echo "$result" > "$cache_file"
+    echo "$result"
 }
 
 _get_latest_patch_version() {
-    # Fetch latest patch version for given major version from kernel.org
     local major="$1"
+    local cache_file="$_cache_dir/patch_version_${major}"
+
+    # Return cached version if valid
+    if _is_cache_valid "$cache_file"; then
+        cat "$cache_file"
+        return 0
+    fi
+
+    # Fetch latest patch version for given major version from kernel.org
     local latest
     # Extract the full version (e.g., "6.17.9" from "6.17")
-    latest=$(curl -fsSL "https://www.kernel.org/releases.json" 2>/dev/null | \
+    latest=$(curl -fsSL --max-time 10 "https://www.kernel.org/releases.json" 2>/dev/null | \
         grep -oP "\"version\":\s*\"\K${major}\.[0-9]+" | head -1)
 
+    local result
     if [ -n "$latest" ]; then
         # Extract just the patch number (e.g., "9" from "6.17.9")
-        echo ".${latest##*.}"
+        result=".${latest##*.}"
     else
         # Fallback to .0 if no stable release found
-        echo ".0"
+        result=".0"
     fi
+
+    # Cache the result
+    mkdir -p "$_cache_dir"
+    echo "$result" > "$cache_file"
+    echo "$result"
 }
 
 # if you change this, you will want to execute `rm *.patch` to ensure the kernel is patched properly
