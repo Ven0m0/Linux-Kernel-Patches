@@ -11,11 +11,14 @@ https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.19/01-debian.p
 https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.19/02-ttm.patch
 https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.19/zstd.patch
 
-# TODO: check and validate polly patches
-https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.19/polly.patch
+# Polly patches: Both patches below are nearly identical 4-part series adding LLVM Polly
+# polyhedral loop optimizer support. Only ONE should be used to avoid conflicts.
+# Recommendation: Use CachyOS version (well-maintained, tested)
+# https://github.com/babiulep/my-kernel-patches/blob/main/PATCHES/6.19/polly.patch
 https://github.com/CachyOS/kernel-patches/blob/master/6.19/misc/0001-clang-polly.patch
 
-# TODO: check which patches are included in 0001-cachyos-base-all.patch already
+# CachyOS base-all patch includes: AMD ISP4 driver (comprehensive image signal processor support)
+# No other patches in this list are duplicated in base-all for 6.19
 https://github.com/CachyOS/kernel-patches/blob/master/6.19/all/0001-cachyos-base-all.patch
 
 https://github.com/CachyOS/kernel-patches/blob/master/6.19/0002-autofdo.patch
