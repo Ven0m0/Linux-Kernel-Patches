@@ -88,7 +88,8 @@ Linux-Kernel-Patches/
 │   │   └── fetch.yml          # Automated patch fetching
 │   └── dependabot.yml         # Dependency management
 ├── kernel-builder.sh          # **MAIN UNIFIED INTERFACE**
-├── autofdo.sh                 # AutoFDO optimization script
+├── autofdo.sh                 # Unified AutoFDO profiling and optimization
+├── docker-build.sh            # Unified Docker-based kernel builds (all architectures)
 ├── README.md                  # Main documentation
 ├── LICENSE                    # Repository license
 └── .gitignore                 # Git ignore patterns
