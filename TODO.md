@@ -1,0 +1,1 @@
+- add patch for [scx_cake](https://github.com/RitzDaCat/scx_cake)
