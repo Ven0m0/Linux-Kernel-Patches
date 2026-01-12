@@ -49,6 +49,7 @@ ${GRN}Usage:${DEF} ${0##*/} [command] [options]
 
 ${YLW}Commands:${DEF}
   ${CYN}catgirl${DEF}         Build optimized catgirl-edition kernel
+  ${CYN}cachymod${DEF}        Build CachyMod kernels (interactive CachyOS builds)
   ${CYN}tkg${DEF}             Build TKG (Frogging-Family) packages
   ${CYN}patches${DEF}         Manage and apply kernel patches
   ${CYN}list${DEF}            List available patches by version
@@ -107,8 +108,78 @@ list_kernels(){
   done
 }
 
-# Stub functions (to be implemented)
-build_catgirl(){ warn "catgirl build not yet implemented"; }
+# Build Functions
+build_catgirl(){
+  info "Building Catgirl Edition kernel..."
+  cd build/catgirl-edition || die "Catgirl edition directory not found"
+  makepkg -scf --cleanbuild --skipchecksums "$@"
+}
+
+build_cachymod(){
+  info "Launching CachyMod build system..."
+  local cachymod_dir="build/cachymod"
+
+  if [[ ! -d "$cachymod_dir" ]]; then
+    die "CachyMod directory not found at $cachymod_dir"
+  fi
+
+  # Check for gum dependency
+  if ! has gum; then
+    warn "CachyMod requires 'gum' for interactive configuration"
+    info "Install it with: sudo pacman -S gum"
+    die "Missing dependency: gum"
+  fi
+
+  # Show CachyMod menu
+  cat <<EOF
+
+${BLD}${CYN}CachyMod Build System${DEF}
+Interactive kernel builder for CachyOS
+
+${YLW}Available Actions:${DEF}
+  ${GRN}1)${DEF} Configure new kernel (confmod.sh)
+  ${GRN}2)${DEF} Build kernel from config
+  ${GRN}3)${DEF} List available configurations
+  ${GRN}4)${DEF} Uninstall CachyMod kernels
+  ${GRN}5)${DEF} View README
+
+EOF
+
+  # If arguments provided, handle them
+  if [[ $# -gt 0 ]]; then
+    case $1 in
+      config|configure)
+        cd "$cachymod_dir/6.18" || die "CachyMod 6.18 directory not found"
+        ../confmod.sh
+        ;;
+      build)
+        cd "$cachymod_dir/6.18" || die "CachyMod 6.18 directory not found"
+        shift
+        ./build.sh "$@"
+        ;;
+      list)
+        cd "$cachymod_dir/6.18" || die "CachyMod 6.18 directory not found"
+        ./build.sh list
+        ;;
+      uninstall)
+        cd "$cachymod_dir" || die "CachyMod directory not found"
+        ./uninstall.sh
+        ;;
+      readme|help)
+        less "$cachymod_dir/README.md" || cat "$cachymod_dir/README.md"
+        ;;
+      *)
+        die "Unknown cachymod command: $1"
+        ;;
+    esac
+  else
+    # Interactive mode - run confmod.sh
+    info "Launching interactive configuration..."
+    cd "$cachymod_dir/6.18" || die "CachyMod 6.18 directory not found"
+    ../confmod.sh
+  fi
+}
+
 build_tkg(){ warn "tkg build not yet implemented"; }
 manage_patches(){ warn "patch management not yet implemented"; }
 list_patches(){ warn "patch listing not yet implemented"; }
@@ -119,6 +190,7 @@ main(){
   [[ $# -eq 0 ]] && show_usage && exit 1
   case $1 in
     catgirl) shift; build_catgirl "$@" ;;
+    cachymod) shift; build_cachymod "$@" ;;
     tkg) shift; build_tkg "$@" ;;
     patches) shift; manage_patches "$@" ;;
     compile) bash scripts/compile.sh ;;
