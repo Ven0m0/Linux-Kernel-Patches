@@ -3,6 +3,7 @@
 A comprehensive Linux kernel build system combining:
 - **Curated Patch Collection**: Organized patches from CachyOS, XanMod, Clear Linux, and more
 - **Catgirl Edition**: Aggressive performance optimizations with multiple scheduler options
+- **CachyMod**: Interactive CachyOS kernel builder with multiple scheduler variants
 - **TKG Integration**: Frogging-Family package management for linux-tkg, nvidia-tkg, mesa-tkg, wine-tkg, and proton-tkg
 
 This unified repository provides everything needed for building highly optimized custom Linux kernels with extensive customization options.
@@ -23,6 +24,12 @@ This unified repository provides everything needed for building highly optimized
 │   │   ├── config             # Kernel configuration
 │   │   ├── patches/           # Catgirl-specific patches
 │   │   └── README.md          # Catgirl Edition documentation
+│   ├── cachymod/              # CachyMod interactive build system
+│   │   ├── confmod.sh         # Interactive configuration utility
+│   │   ├── uninstall.sh       # Kernel removal tool
+│   │   ├── defconfigs/        # Pre-made configurations
+│   │   ├── sample/            # Custom modification templates
+│   │   └── 6.18/              # Kernel 6.18 build directory
 │   ├── configs/               # Build configurations
 │   └── templates/             # Build templates
 ├── scripts/                    # Build and configuration scripts
@@ -50,6 +57,9 @@ Use the main `kernel-builder` script for all build operations:
 
 # Build Catgirl Edition kernel (optimized, multiple schedulers)
 ./kernel-builder catgirl
+
+# Build CachyMod kernels (interactive CachyOS builds)
+./kernel-builder cachymod
 
 # Launch TKG installer TUI for Frogging-Family packages
 ./kernel-builder tkg
@@ -85,6 +95,35 @@ makepkg -scf --cleanbuild --skipchecksums
 - TCP BBRv3 congestion control
 - Modprobed-db support for minimal kernel size
 - Clear Linux and CachyOS patchsets
+
+### Building CachyMod Kernels
+
+CachyMod provides an interactive build system for CachyOS with pre-configured scheduler variants:
+
+```bash
+# Interactive configuration (requires gum)
+./kernel-builder cachymod
+
+# Or use subcommands:
+./kernel-builder cachymod config      # Configure new kernel variant
+./kernel-builder cachymod build 618-bore  # Build specific config
+./kernel-builder cachymod list        # List available configs
+./kernel-builder cachymod uninstall   # Remove installed kernels
+```
+
+**Available Configs:**
+- `618` - Standard EEVDF scheduler
+- `618-bore` - BORE scheduler (balanced)
+- `618-bmq` - BMQ scheduler (minimal)
+- `618-pds` - PDS scheduler
+- `618-rt` - Real-time scheduler
+
+**Prerequisites:**
+```bash
+sudo pacman -S gum  # Required for interactive UI
+```
+
+See `build/cachymod/README.md` for detailed documentation.
 
 ### Using TKG Installer
 
@@ -156,6 +195,36 @@ A highly optimized kernel build system with the following features:
 
 See `build/catgirl-edition/README.md` for detailed documentation.
 
+### CachyMod (Interactive CachyOS Builds)
+
+An interactive kernel build system designed specifically for CachyOS:
+
+**Key Features:**
+- **Interactive Configuration**: Uses `gum` for user-friendly TUI configuration
+- **Pre-made Configs**: Ready-to-use configurations in `defconfigs/` directory
+- **Multiple Scheduler Support**: EEVDF (default), BORE, BMQ, PDS, RT
+- **Kernel Variants**: Build and maintain multiple kernel versions simultaneously
+- **AutoFDO Support**: Profile-guided optimization for performance
+- **Custom Modifications**: Support for user scripts via `custom.sh`
+
+**Build Options:**
+- LTO: None, Thin, Full
+- AutoFDO: Optional profile-guided optimization
+- Hugepage: Always, madvise
+- Local module config support (modprobed-db)
+- TCP BBRv3 congestion control
+- Tick types: Full, idle, periodic
+- HZ values: 1000, 800, 500, 300, 250, 100
+- Preemption: Full, lazy, voluntary, none
+
+**Workflow:**
+1. Configure kernel with `confmod.sh` (creates configs in `~/.config/cachymod/`)
+2. Build with `build.sh <config-name>`
+3. Automatic installation via pacman
+4. Uninstall with interactive `uninstall.sh` tool
+
+See `build/cachymod/README.md` for detailed documentation.
+
 ### TKG Packages (Frogging-Family)
 
 Customizable source-based packages from the Frogging-Family:
@@ -216,12 +285,14 @@ This repository aggregates patches from the following upstream sources:
 
 ### Main Build Tools
 - **kernel-builder**: Unified build interface for all kernel build operations
+- **CachyMod**: Interactive CachyOS kernel builder with pre-configured variants
 - **TKG Installer**: Interactive TUI for Frogging-Family package management
 - **PKGBUILD System**: Arch Linux package build system for catgirl edition
 
 ### Recommended External Tools
 - [patchutils](https://github.com/twaugh/patchutils) - Collection of programs for manipulating patch files
 - [modprobed-db](https://github.com/graysky2/modprobed-db) - Track kernel modules for minimal builds
+- [gum](https://github.com/charmbracelet/gum) - Required for CachyMod interactive configuration
 - [fzf](https://github.com/junegunn/fzf) - Required for TKG installer TUI mode
 
 ### Included Utilities
@@ -246,7 +317,8 @@ This repository combines functionality from:
 
 1. **Original Linux-Kernel-Patches**: Curated patch collection organized by kernel version
 2. **linux-catgirl-edition** ([Ven0m0/linux-catgirl-edition](https://github.com/Ven0m0/linux-catgirl-edition)): Aggressive optimization build system with PKGBUILD
-3. **tkginstaller** ([damachine/tkginstaller](https://github.com/damachine/tkginstaller)): TKG package management and TUI
+3. **cachymod** ([marioroy/cachymod](https://github.com/marioroy/cachymod)): Interactive CachyOS kernel builder with scheduler variants
+4. **tkginstaller** ([damachine/tkginstaller](https://github.com/damachine/tkginstaller)): TKG package management and TUI
 
 The merge provides a unified interface for all kernel building needs, from patch management to optimized builds.
 
@@ -256,6 +328,8 @@ The merge provides a unified interface for all kernel building needs, from patch
 
 **Catgirl Edition Warning:** The aggressive optimizations in catgirl edition (especially memory zero-init disabling, stack protections removal) may introduce security risks. Only use these optimizations if you understand the tradeoffs.
 
+**CachyMod Note:** CachyMod is designed for CachyOS. While it may work on other Arch-based distributions, optimal performance and compatibility are guaranteed on CachyOS. Ensure you have the required dependencies installed.
+
 **TKG Packages:** Frogging-Family TKG packages are customizable and may require specific hardware or software configurations. Review customization.cfg files before building.
 
 ## Support
@@ -263,6 +337,7 @@ The merge provides a unified interface for all kernel building needs, from patch
 For issues or questions:
 - **General issues**: Open an issue in this repository
 - **Catgirl Edition**: See [build/catgirl-edition/README.md](build/catgirl-edition/README.md)
+- **CachyMod**: See [build/cachymod/README.md](build/cachymod/README.md) or visit [marioroy/cachymod](https://github.com/marioroy/cachymod)
 - **TKG packages**: Visit [Frogging-Family repositories](https://github.com/Frogging-Family)
 - **Patches**: Check upstream patch sources for specific documentation
 - **Kernel documentation**: Consult the [Linux kernel documentation](https://www.kernel.org/doc/)
@@ -272,4 +347,5 @@ For issues or questions:
 Each directory (6.12, 6.15, etc.) contains patches specifically tested for that kernel version. Patches may not apply cleanly to other kernel versions without modification.
 
 **Catgirl Edition**: Currently configured for kernel 6.17.x (see build/catgirl-edition/PKGBUILD)
+**CachyMod**: Currently configured for kernel 6.18 (see build/cachymod/6.18/)
 **TKG Packages**: Support varies by package; check Frogging-Family repositories for details

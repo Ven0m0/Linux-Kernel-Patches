@@ -23,11 +23,12 @@
 
 ### Purpose
 
-This is a **unified Linux kernel build system** that combines three major components:
+This is a **unified Linux kernel build system** that combines four major components:
 
 1. **Curated Patch Collection**: Organized patches from CachyOS, XanMod, Clear Linux, and other upstream sources
 2. **Catgirl Edition**: Aggressive performance-optimized kernel build system with PKGBUILD
-3. **TKG Integration**: Frogging-Family package management for linux-tkg, nvidia-tkg, mesa-tkg, wine-tkg, and proton-tkg
+3. **CachyMod**: Interactive CachyOS kernel builder with scheduler variants and TUI configuration
+4. **TKG Integration**: Frogging-Family package management for linux-tkg, nvidia-tkg, mesa-tkg, wine-tkg, and proton-tkg
 
 ### Primary Use Cases
 
@@ -65,6 +66,17 @@ Linux-Kernel-Patches/
 │   │   ├── config             # Optimized kernel configuration
 │   │   ├── patches/           # Build-time patches
 │   │   └── README.md          # Catgirl documentation
+│   ├── cachymod/              # CachyMod interactive build system
+│   │   ├── confmod.sh         # Interactive configuration utility
+│   │   ├── uninstall.sh       # Kernel removal tool
+│   │   ├── defconfigs/        # Pre-made configurations
+│   │   ├── sample/            # Custom modification templates
+│   │   └── 6.18/              # Kernel 6.18 build directory
+│   │       ├── PKGBUILD       # CachyMod PKGBUILD
+│   │       ├── build.sh       # Build script
+│   │       ├── config.sh      # Configuration script
+│   │       ├── config         # Base kernel config
+│   │       └── *.patch        # CachyMod patches
 │   ├── configs/               # Additional build configurations
 │   └── templates/             # Build templates
 ├── scripts/                    # Automation scripts
@@ -111,6 +123,14 @@ Linux-Kernel-Patches/
 - **Configuration**: Extensive customization options via PKGBUILD variables
 - **Output**: `.pkg.tar.zst` installable packages
 
+#### build/cachymod/
+
+- **Primary Files**: `confmod.sh` (configuration), `build.sh` (compilation)
+- **Purpose**: Interactive CachyOS kernel builder with TUI
+- **Configuration**: Uses `gum` for interactive dialogs, stores configs in `~/.config/cachymod/`
+- **Variants**: Supports multiple scheduler variants (EEVDF, BORE, BMQ, PDS, RT)
+- **Output**: `.pkg.tar.zst` installable packages (linux-cachymod-*)
+
 #### scripts/
 
 - **Purpose**: Automation scripts for various build workflows
@@ -134,6 +154,9 @@ The `kernel-builder.sh` script is the **primary entry point** for all operations
 
 # Build Catgirl Edition
 ./kernel-builder.sh catgirl
+
+# Build CachyMod kernels
+./kernel-builder.sh cachymod
 
 # Launch TKG installer
 ./kernel-builder.sh tkg
@@ -180,7 +203,58 @@ sudo pacman -U linux-catgirl-*.pkg.tar.zst
 sudo grub-mkconfig -o /boot/grub/grub.cfg
 ```
 
-### 3. TKG Package Workflow
+### 3. CachyMod Workflow
+
+**Primary Files**: `build/cachymod/confmod.sh`, `build/cachymod/6.18/build.sh`
+
+```bash
+# Step 1: Install dependencies
+sudo pacman -S gum  # Required for interactive TUI
+
+# Step 2: Configure new kernel variant
+cd build/cachymod/6.18
+../confmod.sh
+
+# In confmod.sh:
+# - Choose CPU scheduler (EEVDF, BORE, BMQ, PDS, RT)
+# - Set build type (none, thin, full LTO)
+# - Configure AutoFDO, hugepage, modprobed-db
+# - Set kernel suffix (e.g., 618-bore)
+# - Choose tick rate (1000, 800, 500, etc.)
+# - Configure preemption (full, lazy, voluntary, none)
+# - Add extra patches if needed
+
+# Step 3: Build from configuration
+./build.sh 618-bore  # Or your config name
+
+# Or via unified interface
+cd ../..
+./kernel-builder.sh cachymod build 618-bore
+
+# Step 4: List available configurations
+./build.sh list
+# Or: ./kernel-builder.sh cachymod list
+
+# Step 5: Installation (automatic via build.sh)
+# Packages are auto-installed after build completes
+
+# Step 6: Update bootloader
+sudo grub-mkconfig -o /boot/grub/grub.cfg
+
+# Step 7: Uninstall kernels (if needed)
+cd build/cachymod
+./uninstall.sh
+# Or: ./kernel-builder.sh cachymod uninstall
+```
+
+**Key Features**:
+- Interactive configuration with `gum` TUI
+- Pre-made configs in `defconfigs/` directory
+- Support for custom modifications via `custom.sh`
+- Multiple kernel variants can coexist
+- AutoFDO profile-guided optimization support
+
+### 4. TKG Package Workflow
 
 ```bash
 # Interactive TUI mode (requires fzf)
@@ -200,7 +274,7 @@ sudo grub-mkconfig -o /boot/grub/grub.cfg
 ./scripts/tkg-installer linux config
 ```
 
-### 4. Traditional Patch Application Workflow
+### 5. Traditional Patch Application Workflow
 
 ```bash
 # Step 1: Fetch latest patches
@@ -229,7 +303,7 @@ sudo make modules_install
 sudo make install
 ```
 
-### 5. Patch Fetching Workflow
+### 6. Patch Fetching Workflow
 
 **Script**: `scripts/fetch.sh`
 
