@@ -42,39 +42,39 @@ This unified repository provides everything needed for building highly optimized
 │   ├── tkg-installer          # TKG package installer (TUI)
 │   └── install-tkg.sh         # TKG installer setup script
 ├── docs/                       # Documentation and patch lists
-└── kernel-builder              # Main unified build interface
+└── kernel-builder.sh           # Main unified build interface
 ```
 
 ## Quick Start
 
 ### Unified Build Interface
 
-Use the main `kernel-builder` script for all build operations:
+Use the main `kernel-builder.sh` script for all build operations:
 
 ```bash
 # Interactive mode - shows menu with all options
-./kernel-builder
+./kernel-builder.sh
 
 # Build Catgirl Edition kernel (optimized, multiple schedulers)
-./kernel-builder catgirl
+./kernel-builder.sh catgirl
 
 # Build CachyMod kernels (interactive CachyOS builds)
-./kernel-builder cachymod
+./kernel-builder.sh cachymod
 
 # Launch TKG installer TUI for Frogging-Family packages
-./kernel-builder tkg
+./kernel-builder.sh tkg
 
 # Browse available patches by version
-./kernel-builder patches 6.17
+./kernel-builder.sh patches 6.17
 
 # Fetch latest patches from upstream sources
-./kernel-builder fetch
+./kernel-builder.sh fetch
 
 # Standard kernel compilation
-./kernel-builder compile
+./kernel-builder.sh compile
 
 # Show help and available commands
-./kernel-builder help
+./kernel-builder.sh help
 ```
 
 ### Building Catgirl Edition Kernel
@@ -83,7 +83,7 @@ The Catgirl Edition provides aggressive performance optimizations:
 
 ```bash
 # Build with interactive customization
-./kernel-builder catgirl
+./kernel-builder.sh catgirl
 # Or directly with makepkg
 cd build/catgirl-edition
 makepkg -scf --cleanbuild --skipchecksums
@@ -102,13 +102,13 @@ CachyMod provides an interactive build system for CachyOS with pre-configured sc
 
 ```bash
 # Interactive configuration (requires gum)
-./kernel-builder cachymod
+./kernel-builder.sh cachymod
 
 # Or use subcommands:
-./kernel-builder cachymod config      # Configure new kernel variant
-./kernel-builder cachymod build 618-bore  # Build specific config
-./kernel-builder cachymod list        # List available configs
-./kernel-builder cachymod uninstall   # Remove installed kernels
+./kernel-builder.sh cachymod config      # Configure new kernel variant
+./kernel-builder.sh cachymod build 618-bore  # Build specific config
+./kernel-builder.sh cachymod list        # List available configs
+./kernel-builder.sh cachymod uninstall   # Remove installed kernels
 ```
 
 **Available Configs:**
@@ -131,7 +131,7 @@ Build and manage Frogging-Family packages:
 
 ```bash
 # Interactive TUI mode
-./kernel-builder tkg
+./kernel-builder.sh tkg
 
 # Direct package installation
 ./scripts/tkg-installer linux     # Linux-TKG kernel
@@ -284,7 +284,7 @@ This repository aggregates patches from the following upstream sources:
 ## Tools and Utilities
 
 ### Main Build Tools
-- **kernel-builder**: Unified build interface for all kernel build operations
+- **kernel-builder.sh**: Unified build interface for all kernel build operations
 - **CachyMod**: Interactive CachyOS kernel builder with pre-configured variants
 - **TKG Installer**: Interactive TUI for Frogging-Family package management
 - **PKGBUILD System**: Arch Linux package build system for catgirl edition

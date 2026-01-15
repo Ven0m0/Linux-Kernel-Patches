@@ -42,4 +42,6 @@ https://github.com/babiulep/my-kernel-patches/blob/main/NVIDIA/6.18/in_irq.patch
 https://raw.githubusercontent.com/GloriousEggroll/Linux-Pollrate-Patch/main/pollrate.patch
 
 # ZRAM-IR - Improved ZRAM read performance
+# Note: Using 6.16.0 version (latest available upstream) - compatible with 6.18
+# Upstream repo: https://github.com/firelzrd/zram-ir
 https://raw.githubusercontent.com/firelzrd/zram-ir/main/patches/0001-linux6.16.0-zram-ir-1.2.patch zram-ir-1.2.patch
