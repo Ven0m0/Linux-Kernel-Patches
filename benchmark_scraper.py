@@ -142,29 +142,18 @@ if __name__ == "__main__":
         # Generate HTML page
         html_content = f"""
         <!DOCTYPE html>
-        <html lang="en">
+        <html lang=\"en\">
         <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <meta charset=\"UTF-8\">
+            <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
             <title>Test Performance</title>
         </head>
         <body>
             <h1>Test Performance</h1>
-        """
-
-        # Include charts for comparison of different kernel version performance based on average calculations
-        html_content += f"""
-        <h2>Average Test Performance Comparison</h2>
-        <img src="average_performance_comparison_horizontal_All.png" alt="Average Test Performance Comparison - All Kernels" style="max-width: 100%; height: auto;">
-        """
-
-        # Include charts for comparison of performance between different kernel versions
-        html_content += f"""
-        <h2>Performance Comparison Between Different Kernel Versions</h2>
-        <img src="kernel_version_comparison_All.png" alt="Performance Comparison Between Different Kernel Versions - All Kernels" style="max-width: 100%; height: auto;">
-        """
-
-        html_content += """
+            <h2>Average Test Performance Comparison</h2>
+            <img src=\"average_performance_comparison_horizontal_All.png\" alt=\"Average Test Performance Comparison - All Kernels\" style=\"max-width: 100%; height: auto;\">
+            <h2>Performance Comparison Between Different Kernel Versions</h2>
+            <img src=\"kernel_version_comparison_All.png\" alt=\"Performance Comparison Between Different Kernel Versions - All Kernels\" style=\"max-width: 100%; height: auto;\">
         </body>
         </html>
         """
