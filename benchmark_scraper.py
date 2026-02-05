@@ -11,26 +11,31 @@ def parse_log_files():
     kernel_info = defaultdict(dict)
     kernel_versions = defaultdict(dict)
 
+    # Pre-compile regex patterns
+    kernel_version_pattern = re.compile(r'Kernel: (\S+)')
+    system_info_pattern = re.compile(r'System:(.*?)$', re.DOTALL)
+    test_results_pattern = re.compile(r'(stress-ng cpu-cache-mem|y-cruncher pi 1b|perf sched msg fork thread|perf memcpy|namd 92K atoms|calculating prime numbers|argon2 hashing|ffmpeg compilation|xz compression|kernel defconfig|blender render|x265 encoding|Total time \(s\)|Total score): (\d+\.\d+)')
+
     for file in os.listdir('.'):
         if file.endswith('.log') and file.startswith('benchie_'):
             with open(file, 'r') as f:
                 data_text = f.read()
 
-            kernel_version_match = re.search(r'Kernel: (\S+)', data_text)
+            kernel_version_match = kernel_version_pattern.search(data_text)
             if kernel_version_match:
                 kernel_version = kernel_version_match.group(1)
             else:
                 print(f"Warning: Could not extract kernel version from file: {file}")
                 continue
 
-            system_info_match = re.search(r'System:(.*?)$', data_text, re.DOTALL)
+            system_info_match = system_info_pattern.search(data_text)
             if system_info_match:
                 system_info = system_info_match.group(1).strip()
             else:
                 print(f"Warning: Could not extract system information from file: {file}")
                 continue
 
-            for match in re.finditer(r'(stress-ng cpu-cache-mem|y-cruncher pi 1b|perf sched msg fork thread|perf memcpy|namd 92K atoms|calculating prime numbers|argon2 hashing|ffmpeg compilation|xz compression|kernel defconfig|blender render|x265 encoding|Total time \(s\)|Total score): (\d+\.\d+)', data_text):
+            for match in test_results_pattern.finditer(data_text):
                 test_name = match.group(1)
                 test_time = float(match.group(2))
                 test_data[(kernel_version, test_name)].append(test_time)
