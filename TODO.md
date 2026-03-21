@@ -16,3 +16,9 @@
 ## linux-catgirl-edition
 
 implement https://codeberg.org/a-catgirl/linux-catgirl-edition
+
+## patches
+
+add:
+- https://github.com/firelzrd/zram-ir
+- https://github.com/firelzrd/kcompressd-unofficial
