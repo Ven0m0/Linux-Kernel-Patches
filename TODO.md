@@ -12,3 +12,7 @@
   - Does NOT require kernel recompilation (loads as BPF program)
 - **Status**: To be evaluated for inclusion
 - **Notes**: This is a userspace BPF scheduler that loads dynamically, different from traditional patch-based schedulers like BORE/BMQ/PDS. May be better suited as an optional installation script rather than a kernel patch.
+
+## linux-catgirl-edition
+
+implement https://codeberg.org/a-catgirl/linux-catgirl-edition
