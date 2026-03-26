@@ -2,6 +2,25 @@
 
 > Canonical reference for AI coding agents (Claude, Gemini, Copilot, etc.).
 > Keep this file in sync with the codebase when making structural changes.
+> **Aliases**: `CLAUDE.md` and `GEMINI.md` are symlinks to this file.
+
+---
+
+## Agent Quick Start
+
+Before writing any code, read these files in order:
+
+1. `scripts/lib-common.sh` — shared library every script sources; understand its API before touching any script
+2. `scripts/lib-kernel-config.sh` — all kconfig manipulation goes here
+3. The specific script or PKGBUILD you are modifying
+
+**Key rules (never violate)**:
+- Always source `scripts/lib-common.sh`; never copy its helpers
+- Always use `die "msg"` for fatal errors; never `exit 1`
+- Always add shellcheck directives at the top of every new script
+- Never commit `src/`, `pkg/`, `*.pkg.tar.zst`, or `*.tar.xz` build artifacts
+- Run `bash -n <script.sh>` and `shellcheck` before committing any shell change
+- Use `rg` (ripgrep) for file/code discovery within the repo
 
 ---
 
@@ -19,65 +38,66 @@
 - `gum` — TUI dialogs for interactive scripts (CachyMod)
 - `fzf` — fuzzy finder for TKG installer menus
 - Docker (`pttrr/docker-makepkg`) — cross-arch kernel builds
-- GitHub Actions — CI/CD (lint, build, patch fetch)
+- GitHub Actions — CI/CD (build, patch fetch)
 
 ---
 
 ## Structure
 
 ```
-@Linux-Kernel-Patches/
-├── @kernel-builder.sh          # PRIMARY entry point — unified CLI for all operations
-├── @autofdo.sh                 # AutoFDO profile-guided optimization workflow
-├── @docker-build.sh            # Docker-based multi-arch kernel builds
-├── @cachyos-benchmarker.sh     # Mini benchmark suite (cpu/mem/io/codec)
-├── @benchmark_scraper.py       # Parse benchmark logs → HTML report + charts
-├── @srcinfo.sh                 # Regenerate .SRCINFO for all PKGBUILDs
+Linux-Kernel-Patches/
+├── kernel-builder.sh           # PRIMARY entry point — unified CLI for all operations
+├── autofdo.sh                  # AutoFDO profile-guided optimization workflow
+├── docker-build.sh             # Docker-based multi-arch kernel builds
+├── cachyos-benchmarker.sh      # Mini benchmark suite (cpu/mem/io/codec)
+├── custom-device-pollrates.sh  # USB/HID device polling rate configurator
+├── custom-device-pollrates.conf# udev rules config for poll rates
+├── custom-device-pollrates.service # systemd service for poll rate persistence
+├── benchmark_scraper.py        # Parse benchmark logs → HTML report + charts
+├── srcinfo.sh                  # Regenerate .SRCINFO for all PKGBUILDs
 │
-├── @scripts/
-│   ├── @lib-common.sh          # SHARED LIBRARY — source this in all scripts
-│   ├── @lib-kernel-config.sh   # Kernel kconfig helper functions (apply_*_opts)
-│   ├── @fetch.sh               # Parallel patch fetching from upstream lists
-│   ├── @compile.sh             # Kernel compilation with modprobed-db + xconfig
-│   ├── @tkg-installer          # TKG/Frogminer package TUI (linux/nvidia/mesa/wine/proton)
-│   ├── @install-tkg.sh         # Install tkg-installer to system
-│   └── @utils/
+├── scripts/
+│   ├── lib-common.sh           # SHARED LIBRARY — source this in ALL scripts
+│   ├── lib-kernel-config.sh    # Kernel kconfig helpers (apply_*_opts)
+│   ├── fetch.sh                # Parallel patch fetching from upstream lists
+│   ├── compile.sh              # Kernel compilation with modprobed-db + xconfig
+│   ├── tkg-installer           # TKG/Frogminer package TUI (linux/nvidia/mesa/wine/proton)
+│   ├── install-tkg.sh          # Install tkg-installer to system
+│   └── utils/
 │       ├── sort-modprobed-dbs  # Merge/sort modprobed-db files
 │       └── zramswap            # ZRAM swap configuration
 │
-├── @build/
-│   ├── @catgirl-edition/       # Catgirl Edition — aggressive perf kernel
-│   │   ├── @PKGBUILD           # PRIMARY build file; all tuning vars here
-│   │   ├── @config             # Base kernel .config (~289KB, ~8000 options)
-│   │   └── @patches/           # Build-time patches (Clear Linux patchset)
-│   ├── @cachymod/              # CachyMod — interactive CachyOS kernel builder
-│   │   ├── @confmod.sh         # Interactive config wizard (requires gum)
-│   │   ├── @uninstall.sh       # Remove installed cachymod kernels
-│   │   ├── @defconfigs/        # Pre-made .conf files (618-bore, 618-bmq, etc.)
-│   │   └── @6.18/              # Per-version build directory
-│   │       ├── @PKGBUILD       # CachyMod PKGBUILD
-│   │       ├── @build.sh       # Build from saved config name
-│   │       ├── @config.sh      # Config helper (wraps scripts/lib-kernel-config.sh)
-│   │       ├── @config         # Base kernel config
+├── build/
+│   ├── catgirl-edition/        # Catgirl Edition — aggressive perf kernel
+│   │   ├── PKGBUILD            # PRIMARY build file; all tuning vars here
+│   │   ├── config              # Base kernel .config (~289KB, ~8000 options)
+│   │   └── patches/            # Build-time patches (Clear Linux patchset)
+│   ├── cachymod/               # CachyMod — interactive CachyOS kernel builder
+│   │   ├── confmod.sh          # Interactive config wizard (requires gum)
+│   │   ├── uninstall.sh        # Remove installed cachymod kernels
+│   │   ├── defconfigs/         # Pre-made .conf files (618-bore, 618-bmq, etc.)
+│   │   └── 6.18/               # Per-version build directory
+│   │       ├── PKGBUILD        # CachyMod PKGBUILD
+│   │       ├── build.sh        # Build from saved config name
+│   │       ├── config.sh       # Config helper (wraps scripts/lib-kernel-config.sh)
+│   │       ├── config          # Base kernel config
 │   │       └── *.patch         # Scheduler and feature patches
-│   ├── @linux-cachyos/         # Upstream CachyOS kernel PKGBUILD
-│   ├── @linux-cachyos-bore/    # CachyOS with BORE scheduler
-│   ├── @linux-cachyos-rc/      # CachyOS release-candidate kernel
-│   └── @linux-cachyos-server/  # CachyOS server-optimized kernel
+│   ├── linux-cachyos/          # Upstream CachyOS kernel PKGBUILD
+│   ├── linux-cachyos-bore/     # CachyOS with BORE scheduler
+│   └── linux-cachyos-rc/       # CachyOS release-candidate kernel
 │
-├── @6.12/ @6.16/ @6.17/ @6.18/ @6.19/   # Patch collections per kernel version
+├── 6.12/ 6.18/ 6.19/           # Patch collections per kernel version
 │   ├── patches.txt             # Patch inventory / fetch list
 │   └── *.patch                 # Individual patch files
 │
-├── @docs/
+├── docs/
 │   ├── BUILD_GUIDE.md          # Comprehensive build guide
 │   ├── PATCH_SOURCES.md        # Upstream patch source references
 │   └── REFACTORING.md          # Refactoring history / design decisions
 │
-└── @.github/
+└── .github/
     ├── workflows/fetch.yml     # Trigger: manual — runs scripts/fetch.sh
-    ├── workflows/build.yml     # Trigger: push to linux-cachyos/PKGBUILD — builds GCC+Clang
-    └── workflows/super-linter.yml  # Trigger: push/PR to main — lints all code
+    └── workflows/build.yml     # Trigger: push to linux-cachyos/PKGBUILD — builds GCC+Clang
 ```
 
 ---
@@ -189,7 +209,8 @@ All scripts follow this pattern — **read `scripts/lib-common.sh` before writin
 # shellcheck source=./lib-common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib-common.sh"
 
-# Strict mode (already set by lib-common.sh, but replicate in standalone scripts)
+# Strict mode is already set by lib-common.sh; only add below in standalone scripts
+# that may run without sourcing it:
 set -euo pipefail
 shopt -s nullglob globstar
 export LC_ALL=C
@@ -198,13 +219,13 @@ IFS=$'\n\t'
 
 ### Output Functions (from lib-common.sh)
 
-| Function | Color  | Use for                        |
-|----------|--------|-------------------------------|
-| `info`   | green  | Success / progress messages   |
-| `warn`   | yellow | Non-fatal warnings            |
-| `msg`    | cyan   | Informational / neutral       |
-| `die`    | red    | Fatal errors (exits)          |
-| `debug`  | magenta| Debug only when `DEBUG=1`     |
+| Function | Color   | Use for                       |
+|----------|---------|-------------------------------|
+| `info`   | green   | Success / progress messages   |
+| `warn`   | yellow  | Non-fatal warnings            |
+| `msg`    | cyan    | Informational / neutral       |
+| `die`    | red     | Fatal errors (exits)          |
+| `debug`  | magenta | Debug only when `DEBUG=1`     |
 
 ### Naming Conventions
 
@@ -265,20 +286,20 @@ s=${BASH_SOURCE[0]}; [[ $s != /* ]] && s=$PWD/$s; cd -P -- "${s%/*}"
 
 ## Dependencies
 
-| Dependency     | Purpose                                        | Required by              |
-|----------------|------------------------------------------------|--------------------------|
-| `base-devel`   | makepkg, gcc, etc.                             | All PKGBUILDs            |
-| `clang` + `lld`+ `llvm` | LLVM toolchain for LTO builds         | catgirl-edition, cachymod|
-| `gum`          | TUI dialogs for interactive config wizard       | `build/cachymod/confmod.sh` |
-| `fzf`          | Fuzzy finder menus                              | `scripts/tkg-installer`  |
-| `expac`        | Query pacman package info                       | `kernel-builder.sh`      |
-| `modprobed-db` | Track loaded modules → minimal kernel config   | `scripts/compile.sh`, PKGBUILDs |
-| `ccache`       | Compiler cache (speeds up rebuilds)             | All PKGBUILDs (optional) |
-| `namcap`       | PKGBUILD validation (optional)                  | CI/local dev             |
-| `Docker`       | Cross-arch kernel builds                        | `docker-build.sh`        |
-| `perf`         | CPU profiling for AutoFDO                       | `autofdo.sh`             |
-| `sysbench` / `stress-ng` | Performance and stability testing     | Post-install validation  |
-| `numpy` + `matplotlib` | Python benchmark report generation    | `benchmark_scraper.py`   |
+| Dependency               | Purpose                                      | Required by                          |
+|--------------------------|----------------------------------------------|--------------------------------------|
+| `base-devel`             | makepkg, gcc, etc.                           | All PKGBUILDs                        |
+| `clang` + `lld` + `llvm` | LLVM toolchain for LTO builds                | catgirl-edition, cachymod            |
+| `gum`                    | TUI dialogs for interactive config wizard    | `build/cachymod/confmod.sh`          |
+| `fzf`                    | Fuzzy finder menus                           | `scripts/tkg-installer`              |
+| `expac`                  | Query pacman package info                    | `kernel-builder.sh`                  |
+| `modprobed-db`           | Track loaded modules → minimal kernel config | `scripts/compile.sh`, PKGBUILDs      |
+| `ccache`                 | Compiler cache (speeds up rebuilds)          | All PKGBUILDs (optional)             |
+| `namcap`                 | PKGBUILD validation (optional)               | CI/local dev                         |
+| `Docker`                 | Cross-arch kernel builds                     | `docker-build.sh`                    |
+| `perf`                   | CPU profiling for AutoFDO                    | `autofdo.sh`                         |
+| `sysbench` / `stress-ng` | Performance and stability testing            | Post-install validation              |
+| `numpy` + `matplotlib`   | Python benchmark report generation           | `benchmark_scraper.py`               |
 
 ---
 
@@ -392,11 +413,10 @@ bash -n kernel-builder.sh
 
 ### Workflows
 
-| Workflow | File | Trigger | What it does |
-|----------|------|---------|--------------|
-| **Fetch** | `.github/workflows/fetch.yml` | `workflow_dispatch` (manual) | Runs `scripts/fetch.sh` to download latest patches |
-| **Build** | `.github/workflows/build.yml` | Push to `linux-cachyos/PKGBUILD` or `workflow_dispatch` | Builds `linux-cachyos` with GCC and Clang in parallel; uploads `.pkg.tar.zst` as artifact |
-| **Lint** | `.github/workflows/super-linter.yml` | Push/PR to `main` | Runs `super-linter` on changed files (shellcheck, markdownlint, etc.) |
+| Workflow  | File                           | Trigger                                    | What it does                                                                     |
+|-----------|--------------------------------|--------------------------------------------|----------------------------------------------------------------------------------|
+| **Fetch** | `.github/workflows/fetch.yml`  | `workflow_dispatch` (manual)               | Runs `scripts/fetch.sh` to download latest patches                               |
+| **Build** | `.github/workflows/build.yml`  | Push to `linux-cachyos/PKGBUILD` or manual | Builds `linux-cachyos` with GCC and Clang in parallel; uploads `.pkg.tar.zst`   |
 
 ### Build Matrix
 
@@ -438,17 +458,18 @@ jobs:
 
 ## Tool Preferences
 
-| Category       | Tool                    | Notes                                          |
-|----------------|-------------------------|------------------------------------------------|
-| Shell          | Bash (4+)               | `#!/usr/bin/env bash`, not `/bin/bash`         |
-| Linter         | shellcheck              | `enable=all`, directives at top of each file  |
-| Package manager| pacman / makepkg        | Arch/CachyOS only                             |
-| Compiler       | Clang/LLVM (preferred)  | GCC as fallback; set via `_use_llvm_lto`      |
-| TUI            | gum (confmod), fzf (tkg)| Not interchangeable                           |
-| Profiler       | perf (AutoFDO)          | `autofdo.sh` workflow                         |
-| Formatter      | None enforced           | Follow surrounding code style                 |
-| Python         | System python3          | Only for `benchmark_scraper.py`               |
-| Docker image   | `pttrr/docker-makepkg`  | For cross-arch builds in `docker-build.sh`    |
+| Category        | Tool                     | Notes                                         |
+|-----------------|--------------------------|-----------------------------------------------|
+| Shell           | Bash (4+)                | `#!/usr/bin/env bash`, not `/bin/bash`        |
+| Linter          | shellcheck               | `enable=all`, directives at top of each file  |
+| Package manager | pacman / makepkg         | Arch/CachyOS only                             |
+| Compiler        | Clang/LLVM (preferred)   | GCC as fallback; set via `_use_llvm_lto`      |
+| TUI             | gum (confmod), fzf (tkg) | Not interchangeable                           |
+| Profiler        | perf (AutoFDO)           | `autofdo.sh` workflow                         |
+| Formatter       | None enforced            | Follow surrounding code style                 |
+| Python          | System python3           | Only for `benchmark_scraper.py`               |
+| Docker image    | `pttrr/docker-makepkg`   | For cross-arch builds in `docker-build.sh`    |
+| File search     | `rg` (ripgrep)           | Preferred over `grep`/`find` for discovery    |
 
 ---
 
@@ -499,4 +520,4 @@ sudo pacman -S modprobed-db && sudo modprobed-db store
 
 ---
 
-*This file is the canonical AI agent guide. `CLAUDE.md` and `GEMINI.md` are aliases for this file.*
+*This file is the canonical AI agent guide. `CLAUDE.md` and `GEMINI.md` are symlinks to this file.*
